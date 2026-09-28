@@ -21,7 +21,7 @@ export class TmdbClient {
 
   get configured(): boolean { return Boolean(this.options.token || this.options.apiKey); }
 
-  validateCredentials() { return this.request('/authentication', z.object({ success: z.literal(true) })); }
+  validateCredentials() { return this.request('/authentication', z.object({ success: z.literal(true) }), {}, TTL.catalog); }
 
   private async limited<T>(operation: () => Promise<T>): Promise<T> {
     if (this.active >= 6) await new Promise<void>(resolve => this.waiting.push(resolve));

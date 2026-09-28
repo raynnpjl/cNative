@@ -1,8 +1,8 @@
-import type { ConfigStore } from '../config/config.store.js';
+import type { AddonConfig } from '../config/config.schema.js';
 import type { CatalogExtra, CatalogService } from '../catalogs/catalog.service.js';
 
-export function catalogHandler(service: CatalogService, store: ConfigStore) {
+export function catalogHandler(service: CatalogService, config: AddonConfig) {
   return async ({ type, id, extra }: { type: string; id: string; extra: CatalogExtra }) => ({
-    metas: type === 'series' ? await service.get(id, extra, await store.get()) : [],
+    metas: type === 'series' ? await service.get(id, extra, config) : [],
   });
 }

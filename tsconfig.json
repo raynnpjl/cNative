@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["addon/**/*.ts", "shared/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
+  "include": ["api/**/*.ts", "addon/**/*.ts", "shared/**/*.ts", "tests/**/*.ts", "vitest.config.ts"]
 }

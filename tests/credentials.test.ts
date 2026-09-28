@@ -1,42 +1,33 @@
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
-import { TmdbCredentialsStore } from '../addon/src/config/tmdb-credentials.store.js';
+import { describe, expect, it } from 'vitest';
+import { createDefaultConfig } from '../shared/config.js';
+import { decodeInstallation, encodeInstallation, installationFromPath, MAX_CONFIGURATION_LENGTH } from '../shared/installation.js';
 
-const directories: string[] = [];
-afterEach(async () => { await Promise.all(directories.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
-async function path() {
-  const dir = await mkdtemp(join(tmpdir(), 'cnative-credentials-'));
-  directories.push(dir);
-  return join(dir, 'tmdb-credentials.json');
-}
-
-it('starts unconfigured and privately persists credentials across restarts', async () => {
-  const file = await path();
-  const store = await TmdbCredentialsStore.open(file);
-  expect(store.get()).toBeUndefined();
-  await store.save({ apiKey: 'test-key', token: 'test-token' });
-  expect((await stat(file)).mode & 0o777).toBe(0o600);
-  expect((await TmdbCredentialsStore.open(file)).get()).toEqual({ apiKey: 'test-key', token: 'test-token' });
-  store.get()!.apiKey = 'unsaved';
-  expect(store.get()?.apiKey).toBe('test-key');
-});
-
-it('requires an API key, permits no token, and serializes replacement saves', async () => {
-  const file = await path();
-  const store = await TmdbCredentialsStore.open(file);
-  await expect(store.save({ token: 'token-only' })).rejects.toThrow();
-  await expect(store.save({ apiKey: '  ' })).rejects.toThrow();
-  await Promise.all([store.save({ apiKey: 'first', token: 'token' }), store.save({ apiKey: ' second ' })]);
-  expect(store.get()).toEqual({ apiKey: 'second' });
-  expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(store.get());
-  expect(await readdir(join(file, '..'))).toEqual(['tmdb-credentials.json']);
-});
-
-it('never overwrites an invalid saved credentials file', async () => {
-  const file = await path();
-  await writeFile(file, '{bad');
-  await expect(TmdbCredentialsStore.open(file)).rejects.toThrow();
-  expect(await readFile(file, 'utf8')).toBe('{bad');
+const installation = () => ({ version: 1 as const, config: createDefaultConfig(), credentials: { apiKey: 'test-key', token: 'optional-token' } });
+describe('personal installation links', () => {
+  it('round trips Unicode, punctuation, every catalog field and credentials', () => {
+    const input = installation();
+    Object.assign(input.config.catalogs[0]!, { name: '剧集 & / + 😃', originCountry: 'CN', firstAirDateFrom: '2020-01-01', firstAirDateTo: '2026-01-01', runtimeMin: 10, runtimeMax: 90, excludeGenres: [35], showInHome: false });
+    const encoded = encodeInstallation(input);
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
+    expect(decodeInstallation(encoded)).toEqual(input);
+    expect(installationFromPath(`/${encoded}/configure/`)).toEqual(input);
+  });
+  it('supports API key only, with no configuration on the public configure page', () => {
+    expect(decodeInstallation(encodeInstallation({ ...installation(), credentials: { apiKey: 'key' } })).credentials).toEqual({ apiKey: 'key' });
+    expect(installationFromPath('/configure')).toBeUndefined();
+    expect(installationFromPath('/')).toBeUndefined();
+  });
+  it.each(['', '%2F', 'abc=', 'not-json', btoa('{"version":2}'), btoa('{"credentials":{"token":"only"}}')])('rejects malformed or incomplete links without echoing them', encoded => {
+    expect(() => decodeInstallation(encoded)).toThrow('Invalid installation link');
+  });
+  it('rejects oversized configurations before generating unusable URLs', () => {
+    const input = installation();
+    input.config.catalogs = Array.from({ length: 50 }, (_, i) => ({ ...input.config.catalogs[0]!, id: `catalog_${i}` }));
+    expect(() => encodeInstallation(input)).toThrow('too large');
+    expect(() => decodeInstallation('a'.repeat(MAX_CONFIGURATION_LENGTH + 1))).toThrow('too large');
+  });
+  it('rejects missing keys and unknown config versions', () => {
+    expect(() => encodeInstallation({ ...installation(), credentials: { apiKey: ' ' } })).toThrow();
+    expect(() => decodeInstallation(btoa(JSON.stringify({ ...installation(), version: 2 })))).toThrow();
+  });
 });

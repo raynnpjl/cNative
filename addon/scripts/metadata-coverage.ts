@@ -2,8 +2,7 @@ import 'dotenv/config';
 import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
-import { JsonConfigStore } from '../src/config/config.store.js';
-import { TmdbCredentialsStore } from '../src/config/tmdb-credentials.store.js';
+import { decodeInstallation } from '../../shared/installation.js';
 import { TmdbClient } from '../src/providers/tmdb/tmdb.client.js';
 import { buildDiscoverQuery } from '../src/catalogs/discover-query.builder.js';
 import { IdResolver } from '../src/ids/id-resolver.service.js';
@@ -12,8 +11,15 @@ import { measureCoverage } from '../src/metadata/coverage.js';
 try {
   const { values } = parseArgs({ options: { limit: { type: 'string', default: '20' }, ids: { type: 'string' }, output: { type: 'string' } } });
   const limit = z.coerce.number().int().min(1).max(100).parse(values.limit);
-  const credentials = (await TmdbCredentialsStore.open(`${process.env.CONFIG_PATH ?? '/data/config.json'}.tmdb.json`)).get();
-  if (!credentials) throw new Error('Save your TMDB API key in General Settings before measuring live metadata coverage.');
+  const manifestUrl = process.env.CNATIVE_MANIFEST_URL;
+  if (!manifestUrl) throw new Error('Set CNATIVE_MANIFEST_URL to your personal installation URL before measuring coverage.');
+  let encoded: string | undefined;
+  try {
+    const match = /^\/([^/]+)\/manifest\.json$/.exec(new URL(manifestUrl).pathname);
+    encoded = match?.[1];
+  } catch { /* Report only a safe message, never the credential-bearing URL. */ }
+  if (!encoded) throw new Error('CNATIVE_MANIFEST_URL must be a personal cNative manifest URL.');
+  const { credentials, config } = decodeInstallation(encoded);
   const tmdb = new TmdbClient(credentials);
   const resolver = new IdResolver(tmdb);
   let ids: number[] = [];
@@ -24,7 +30,6 @@ try {
       ids.push(id);
     }
   } else {
-    const config = await (await JsonConfigStore.open(process.env.CONFIG_PATH ?? '/data/config.json')).get();
     const catalog = config.catalogs.find(catalog => catalog.enabled);
     if (!catalog) throw new Error('Enable a catalog or pass --ids=tmdb:123,tt1234567');
     for (let page = 1; ids.length < limit; page++) {

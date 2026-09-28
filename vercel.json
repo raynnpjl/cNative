@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci --include=dev",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/configure",
+  "trailingSlash": false,
+  "headers": [
+    { "source": "/(.*)", "headers": [
+      { "key": "Referrer-Policy", "value": "no-referrer" },
+      { "key": "Cache-Control", "value": "no-store" }
+    ] }
+  ],
+  "rewrites": [
+    { "source": "/configure", "destination": "/index.html" },
+    { "source": "/:configuration/configure", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/api/index" }
+  ]
+}

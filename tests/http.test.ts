@@ -1,29 +1,21 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../addon/src/app.js';
-import { JsonConfigStore } from '../addon/src/config/config.store.js';
-import { TmdbCredentialsStore } from '../addon/src/config/tmdb-credentials.store.js';
+import { encodeInstallation } from '../shared/installation.js';
 import { createDefaultConfig, type AddonConfig } from '../shared/config.js';
 import { buildManifest } from '../addon/src/manifest.js';
 import { TmdbClient } from '../addon/src/providers/tmdb/tmdb.client.js';
 import { genres, tmdbFixture } from './fixtures.js';
 
-let directory: string;
 let server: Server;
 let base: string;
-let store: JsonConfigStore;
+let encoded: string;
 let fixture: ReturnType<typeof tmdbFixture>;
 beforeEach(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'cnative-http-'));
-  store = await JsonConfigStore.open(join(directory, 'config.json'));
+  encoded = encodeInstallation({ version: 1, config: createDefaultConfig(), credentials: { apiKey: 'test-key', token: 'test-token' } });
   fixture = tmdbFixture();
-  const credentials = await TmdbCredentialsStore.open(join(directory, 'tmdb.json'));
-  await credentials.save({ apiKey: 'test-key', token: 'test-token' });
   await new Promise<void>((resolve, reject) => {
-    server = createApp(store, credentials, { fetcher: fixture.fetcher }).listen(0, '127.0.0.1', error => error ? reject(error) : resolve());
+    server = createApp({ fetcher: fixture.fetcher }).listen(0, '127.0.0.1', error => error ? reject(error) : resolve());
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Missing test server address');
@@ -32,10 +24,13 @@ beforeEach(async () => {
 afterEach(async () => {
   server?.closeAllConnections();
   if (server?.listening) await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
-  if (directory) await rm(directory, { recursive: true, force: true });
 });
-const get = (path: string) => fetch(`${base}${path}`);
-const save = (config: unknown) => fetch(`${base}/api/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+const get = (path: string) => fetch(`${base}/${encoded}${path}`);
+const save = async (config: unknown) => {
+  const response = await fetch(`${base}/api/configure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: 1, config, credentials: { apiKey: 'test-key', token: 'test-token' } }) });
+  if (response.ok) encoded = (await response.clone().json()).encodedConfig;
+  return response;
+};
 
 describe('Stremio and configuration HTTP', () => {
   it('saves the example catalog and sends all expected upstream filters', async () => {
@@ -126,12 +121,11 @@ describe('Stremio and configuration HTTP', () => {
     expect(images).toHaveLength(1);
     expect(images[0]?.searchParams.get('include_image_language')).toBe('zh');
   });
-  it('rejects invalid configuration without changing saved settings', async () => {
+  it('rejects invalid configuration without changing the installed URL', async () => {
+    const previous = encoded;
     expect((await save({ ...createDefaultConfig(), metadataLanguage: 'en-US' })).status).toBe(400);
-    expect(await (await get('/api/config')).json()).toEqual(createDefaultConfig());
-    expect((await get('/api/config')).headers.get('Access-Control-Allow-Origin')).toBeNull();
-    const badOrigin = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: 'https://other.example' }, body: JSON.stringify(createDefaultConfig()) });
-    expect(badOrigin.status).toBe(403);
+    expect(encoded).toBe(previous);
+    expect((await (await get('/manifest.json')).json()).catalogs[0].name).toBe('华语热门剧集');
   });
   it('honors enable/home controls and exposes TMDB lookup choices', async () => {
     const config = createDefaultConfig();
@@ -142,7 +136,7 @@ describe('Stremio and configuration HTTP', () => {
     config.catalogs[0]!.enabled = false;
     await save(config);
     expect((await (await get('/manifest.json')).json()).catalogs).toHaveLength(1);
-    expect(await (await get('/api/lookups')).json()).toMatchObject({ genres, countries: [{ iso_3166_1: 'CN' }], languages: [{ iso_639_1: 'zh' }] });
+    expect(await (await fetch(`${base}/api/lookups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: 'test-key' }) })).json()).toMatchObject({ genres, countries: [{ iso_3166_1: 'CN' }], languages: [{ iso_639_1: 'zh' }] });
   });
 });
 

@@ -2,8 +2,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from '../configure/src/App';
-import { addonConfigSchema, createDefaultConfig, type AddonConfig, type Lookups } from '../shared/config';
-import { tmdbCredentialsSchema, type TmdbCredentials, type TmdbStatus } from '../shared/credentials';
+import { createDefaultConfig, type AddonConfig, type Lookups } from '../shared/config';
+import type { TmdbCredentials } from '../shared/credentials';
+import { decodeInstallation, encodeInstallation, installationSchema } from '../shared/installation';
 
 const lookups: Lookups = {
   genres: [{ id: 18, name: '剧情 · Drama' }, { id: 35, name: '喜剧 · Comedy' }],
@@ -12,31 +13,41 @@ const lookups: Lookups = {
 };
 let persisted: AddonConfig;
 let failSave: boolean;
-let credentialStatus: TmdbStatus;
 let credentialSaves: TmdbCredentials[];
 let failCredentials: boolean;
 beforeEach(() => {
   persisted = createDefaultConfig(); failSave = false;
-  credentialStatus = { tmdbConfigured: true, tokenConfigured: false }; credentialSaves = []; failCredentials = false;
+  credentialSaves = []; failCredentials = false;
+  window.history.replaceState(null, '', `/${encodeInstallation({ version: 1, config: persisted, credentials: { apiKey: 'test-key', token: 'test-token' } })}/configure`);
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
-    if (String(input) === '/api/status') return Response.json(credentialStatus);
-    if (String(input) === '/api/credentials') {
-      if (failCredentials) return Response.json({ error: 'TMDB rejected the API key. Check it and try again.' }, { status: 400 });
-      const credentials = tmdbCredentialsSchema.parse(JSON.parse(String(init?.body)));
-      credentialSaves.push(credentials);
-      credentialStatus = { tmdbConfigured: true, tokenConfigured: Boolean(credentials.token) };
-      return Response.json(credentialStatus);
-    }
     if (String(input) === '/api/lookups') return Response.json(lookups);
-    if (init?.method === 'PUT') {
-      if (failSave) return Response.json({ error: 'Disk full' }, { status: 500 });
-      persisted = addonConfigSchema.parse(JSON.parse(String(init.body)));
+    if (String(input) === '/api/configure') {
+      if (failCredentials) return Response.json({ error: 'TMDB rejected the API key. Check it and try again.' }, { status: 400 });
+      if (failSave) return Response.json({ error: 'TMDB temporarily unavailable' }, { status: 502 });
+      const installation = installationSchema.parse(JSON.parse(String(init?.body)));
+      credentialSaves.push(installation.credentials);
+      persisted = installation.config;
+      return Response.json({ encodedConfig: encodeInstallation(installation) });
     }
-    return Response.json(persisted);
+    throw new Error(`Unexpected API endpoint: ${input}`);
   }));
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.setAttribute('open', ''); } });
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it.each([true, false])('uses the loopback IP in install and copied links (development: %s)', async development => {
+  vi.stubEnv('DEV', development);
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  expect(window.location.hostname).toBe('localhost');
+  render(<App />);
+  const manifestPath = window.location.pathname.replace('/configure', '/manifest.json');
+  const port = development ? '7000' : window.location.port;
+  const host = `127.0.0.1${port ? `:${port}` : ''}`;
+  await waitFor(() => expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBe(`stremio://${host}${manifestPath}`));
+  fireEvent.click(screen.getByRole('button', { name: /Copy manifest URL/ }));
+  expect(writeText).toHaveBeenCalledWith(`http://${host}${manifestPath}`);
+});
 
 it('shows bilingual genre choices without a match-mode selector and saves genre IDs', async () => {
   render(<App />);
@@ -108,7 +119,7 @@ it('changes General Settings and retains unsaved edits after a save failure', as
   fireEvent.click(screen.getByRole('switch', { name: 'Off' }));
   failSave = true;
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
-  await screen.findByText('Disk full');
+  await screen.findByText('TMDB temporarily unavailable');
   expect(screen.getByText('Unsaved changes')).toBeTruthy();
   expect(persisted.includeAdult).toBe(false);
   failSave = false;
@@ -119,7 +130,7 @@ it('changes General Settings and retains unsaved edits after a save failure', as
 });
 
 it('blocks installation and copying until an API key is saved, with no token required', async () => {
-  credentialStatus = { tmdbConfigured: false, tokenConfigured: false };
+  window.history.replaceState(null, '', '/configure');
   render(<App />);
   const apiKey = await screen.findByLabelText('TMDB API key (required)');
   const install = screen.getByRole('link', { name: /Install in Stremio/ });
@@ -131,16 +142,16 @@ it('blocks installation and copying until an API key is saved, with no token req
   fireEvent.change(apiKey, { target: { value: ' user-api-key ' } });
   expect(install.getAttribute('href')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
-  await screen.findByText('TMDB credentials saved.');
+  await screen.findByText(/TMDB credentials saved to your personal link/);
   await waitFor(() => expect(install.getAttribute('href')).toContain('stremio://'));
   expect(credentialSaves).toEqual([{ apiKey: 'user-api-key' }]);
-  expect((apiKey as HTMLInputElement).value).toBe('');
+  expect((apiKey as HTMLInputElement).value).toBe('user-api-key');
   expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/lookups')).toBe(true);
   expect(persisted).not.toHaveProperty('apiKey');
 });
 
 it('does not accept token-only setup and preserves input on a rejected save', async () => {
-  credentialStatus = { tmdbConfigured: false, tokenConfigured: false };
+  window.history.replaceState(null, '', '/configure');
   render(<App />);
   const token = await screen.findByLabelText('Read access token (optional)');
   fireEvent.change(token, { target: { value: 'read-token' } });
@@ -157,26 +168,60 @@ it('does not accept token-only setup and preserves input on a rejected save', as
   failCredentials = false;
   fireEvent.change(apiKey, { target: { value: 'valid-key' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
-  await screen.findByText('TMDB credentials saved.');
+  await screen.findByText(/TMDB credentials saved to your personal link/);
   expect(credentialSaves).toEqual([{ apiKey: 'valid-key', token: 'read-token' }]);
-  expect((token as HTMLInputElement).value).toBe('');
+  expect((token as HTMLInputElement).value).toBe('read-token');
 });
 
-it('shows saved status without exposing secrets and gates installation during unsaved credential edits', async () => {
-  credentialStatus = { tmdbConfigured: true, tokenConfigured: true };
+it('restores credentials and catalogs from the link and gates unsaved credential edits', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
   const apiKey = screen.getByLabelText('TMDB API key (required)');
-  expect((apiKey as HTMLInputElement).value).toBe('');
-  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
-  expect(screen.getByText('API key saved')).toBeTruthy();
+  expect((apiKey as HTMLInputElement).value).toBe('test-key');
+  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('test-token');
+  await screen.findByText('API key saved');
   fireEvent.change(apiKey, { target: { value: 'replacement-key' } });
+  fireEvent.change(screen.getByLabelText('Read access token (optional)'), { target: { value: '' } });
   expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Catalogs/ }));
   fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
   expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('replacement-key');
   fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
-  await screen.findByText('TMDB credentials saved.');
-  expect(credentialStatus.tokenConfigured).toBe(false);
+  await screen.findByText(/TMDB credentials saved to your personal link/);
+  expect(decodeInstallation(window.location.pathname.split('/')[1]!).credentials).toEqual({ apiKey: 'replacement-key' });
+  cleanup();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('replacement-key');
+  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
+});
+
+it('restores edited filters after reload and copies the same personal manifest URL', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await screen.findByRole('option', { name: /China/ });
+  fireEvent.change(screen.getByLabelText('Catalog name'), { target: { value: '我的剧集 & TV' } });
+  fireEvent.change(screen.getByLabelText('Origin country'), { target: { value: 'CN' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply catalog' }));
+  expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await screen.findByText(/Configuration saved/);
+  const path = window.location.pathname;
+  cleanup(); render(<App />);
+  await screen.findByRole('heading', { name: '我的剧集 & TV' });
+  await waitFor(() => expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toContain(path.replace('/configure', '/manifest.json')));
+  fireEvent.click(screen.getByRole('button', { name: /Copy manifest URL/ }));
+  expect(writeText.mock.calls[0]?.[0]).toContain(path.replace('/configure', '/manifest.json'));
+  expect(decodeInstallation(path.split('/')[1]!).config.catalogs[0]?.originCountry).toBe('CN');
+});
+
+it('fails closed on a malformed configuration URL', () => {
+  window.history.replaceState(null, '', '/broken/configure');
+  render(<App />);
+  expect(screen.getByRole('alert').textContent).toContain('Invalid installation link');
+  expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
+  expect(fetch).not.toHaveBeenCalled();
 });

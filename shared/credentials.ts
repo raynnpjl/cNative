@@ -6,8 +6,6 @@ export const tmdbCredentialsSchema = z.strictObject({
 });
 export type TmdbCredentials = z.infer<typeof tmdbCredentialsSchema>;
 
-export const tmdbStatusSchema = z.object({
-  tmdbConfigured: z.boolean(),
-  tokenConfigured: z.boolean(),
-});
-export type TmdbStatus = z.infer<typeof tmdbStatusSchema>;
+export interface TmdbStatus {
+  tmdbConfigured: boolean;
+}

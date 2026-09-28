@@ -1,8 +1,8 @@
-import type { ConfigStore } from '../config/config.store.js';
+import type { AddonConfig } from '../config/config.schema.js';
 import type { MetadataService } from '../metadata/metadata.service.js';
 
-export function metaHandler(service: MetadataService, store: ConfigStore) {
+export function metaHandler(service: MetadataService, config: AddonConfig) {
   return async ({ type, id }: { type: string; id: string }) => ({
-    meta: type === 'series' ? await service.get(id, await store.get()) : null,
+    meta: type === 'series' ? await service.get(id, config) : null,
   });
 }

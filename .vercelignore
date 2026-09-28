@@ -1,0 +1,5 @@
+.env
+.env.*
+data/
+graphify-out/
+coverage/

@@ -6,7 +6,7 @@ import { CNATIVE_ID_PREFIX } from './ids/id-resolver.service.js';
 
 export function buildManifest(config: AddonConfig, genres: Genre[], configured: boolean): Manifest {
   return {
-    id: 'org.cnative.tv', version: '1.0.4', name: 'cNative',
+    id: 'org.cnative.tv', version: '1.1.0', name: 'cNative',
     description: 'Chinese dramas with native titles and existing Chinese TMDB metadata. No translation.',
     types: ['series'],
     resources: ['catalog', { name: 'meta', types: ['series'], idPrefixes: [CNATIVE_ID_PREFIX] }],

@@ -1,57 +1,62 @@
 # cNative
 
-A configurable, single-user Stremio metadata addon for Chinese TV dramas. TMDB is the **only** provider. cNative uses existing Chinese/native metadata and never translates or scrapes it.
+A configurable Stremio metadata addon for Chinese TV dramas. TMDB is the **only** provider. cNative uses existing Chinese/native metadata and never translates or scrapes it.
 
-Build catalogs with TMDB Discover, choose their order, and decide which appear on Stremio Home. A default catalog is created automatically, with Chinese original language, Drama (18), and popularity descending. The Drama filter keeps reality/news programs out of the starter shelf and can be removed in the editor.
+Each installation carries its own TMDB credentials and catalog settings in its URL. No database, shared configuration, or persistent disk is needed. The default catalog uses Chinese original language, Drama (18), and popularity descending; all filters can be edited.
 
 ## Run locally
 
-Requires Node.js **22.12+** and a TMDB v3 API key from [TMDB API settings](https://www.themoviedb.org/settings/api). An API Read Access Token is optional. This is application API authentication; there is no TMDB user-account integration.
+Requires Node.js **22.12+** and a TMDB v3 API key from [TMDB API settings](https://www.themoviedb.org/settings/api). An API Read Access Token is optional.
 
 ```sh
 npm ci
-```
-
-Create `.env` from `.env.example` for local host, port, and configuration path settings. TMDB credentials are entered and saved through **General Settings** in the configuration UI; `TMDB_API_KEY` and `TMDB_READ_ACCESS_TOKEN` environment variables are no longer used.
-
-```sh
 npm run build
 npm start
 ```
 
-Open **http://127.0.0.1:7000/configure/**. In **General Settings**, enter your **TMDB API key**, optionally enter a **Read access token**, and click **Save API key**. Both supplied credentials are validated with TMDB before saving. Then configure catalogs, save, and select **Install in Stremio**. You can also copy the manifest URL after saving. The install and copy controls stay disabled until an API key has been saved and there are no unsaved edits.
+Open **http://127.0.0.1:7000/configure**. In **General Settings**, enter your TMDB API key and optional read access token, then click **Save API key**. Both supplied credentials are validated separately with TMDB. Choose catalogs, click **Save configuration**, then **Install in Stremio** or **Copy manifest URL**. Installation stays disabled while credentials are missing, invalid, or edited without saving.
 
-For development:
+For development, run `npm run dev` and open **http://127.0.0.1:5173/configure**. The generated installation URL targets the backend on port 7000.
 
-```sh
-npm run dev
+## Personal installation links
+
+```text
+https://your-host/<encoded-configuration>/manifest.json
+https://your-host/<encoded-configuration>/configure
 ```
 
-Backend: port 7000. Vite UI: **http://127.0.0.1:5173/configure/**. Install the backend’s port-7000 manifest in Stremio while developing.
+The URL contains versioned, UTF-8 base64url JSON with the user's credentials and complete catalog configuration. Stremio retains the manifest URL and includes the configuration prefix on catalog and metadata requests. The matching configure URL restores every setting, including both credential fields. Saving replaces the browser's configuration URL; **install the updated link in Stremio to apply changes**. Existing installations keep using their previous settings until updated.
 
-Without saved credentials, the UI and config API still start. The manifest sets `configurationRequired: true`, so Stremio directs users to configure instead of install; lookup/catalog/metadata requests explain what is missing. A token alone cannot unlock installation. Invalid saved configuration or credentials fail startup without overwriting files.
+The public `/manifest.json` requires configuration. Requests without a personal configuration cannot access catalogs or metadata. Invalid links fail explicitly. Links are limited to 7,000 encoded characters to leave room for resource paths; oversized configurations are rejected before installation. Enabled manifests are also checked against Stremio's 8 KB limit.
 
-Credentials are shared by this single-user server and stored separately in `${CONFIG_PATH}.tmdb.json` with owner-only permissions. They are never returned by the config/status APIs or included in the manifest or installation URL. Saving new credentials takes effect immediately and resets TMDB caches; no restart is needed. Saved fields appear empty on reload. To replace credentials, enter the API key again; leaving the optional token blank removes the saved token. A failed validation or save keeps the last working credentials.
+**Treat your personal link as a credential.** Encoding is not encryption. Anyone with the link can recover the key and use the same configuration. cNative receives the credentials on each request and may retain them in bounded process-local caches, but does not save them to disk or a database. Browser history and hosting request logs may contain the link. The configure page uses `no-referrer`, and application errors do not log request URLs or credentials. Share `/configure` publicly, not your personal link.
 
-## Configuration
+Version 1.1 removes file-based settings entirely. Existing `data/config.json`, credential files, `CONFIG_PATH`, `TMDB_API_KEY`, and `TMDB_READ_ACCESS_TOKEN` are not read. Old local files are left untouched; create and install a new personal link through the UI.
 
-| Environment variable | Default | Purpose |
+## Hosting on Vercel
+
+1. Push this version to your GitHub repository.
+2. In Vercel, choose **Add New → Project** and import the repository.
+3. Keep the repository root as the Root Directory and use the **Other** framework preset. The checked-in `vercel.json` supplies the build command, static output, and routing.
+4. Deploy. No TMDB environment variables, database, or disk are required.
+5. Open `https://your-project.vercel.app/configure`, save your API key and settings, and install the generated personal URL.
+
+The Vite frontend is served as static assets, while `api/index.ts` exposes the Express backend as a Vercel Function. Configure-page rewrites preserve the original URL so the browser can restore settings. The public production addon endpoints must be reachable without Vercel login protection for Stremio to use them. Vercel Hobby is for personal, non-commercial use and remains subject to its [usage limits](https://vercel.com/docs/plans/hobby).
+
+## Server settings and Docker
+
+Optional `.env` values for local Node.js:
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `CONFIG_PATH` | `/data/config.json` | Atomic JSON configuration file |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `7000` | HTTP port |
-
-For local development, set `CONFIG_PATH=./data/config.json` in `.env`. Without this setting, the default is `/data/config.json`; the process must have write permission to its directory. Saves are validated, serialized, written to a unique temporary file, synced, and atomically renamed. The store is behind a small `ConfigStore` interface.
-
-This is a single-user service with no public accounts or authentication. Keep the configuration interface/API private. If serving the read-only addon publicly, expose `/manifest.json`, `/catalog/*`, and `/meta/*` through an HTTPS reverse proxy and restrict `/configure/*` and `/api/*` to your trusted network. Stremio protocol responses allow CORS; config endpoints do not. JSON writes reject cross-origin browser requests. These measures are not a replacement for access control.
-
-### Docker
 
 ```sh
 docker compose up --build -d
 ```
 
-Compose reads server settings from `.env`, persists configuration and saved credentials in the `/data` volume, and binds the host port to localhost. Enter TMDB credentials through the configuration UI after startup. Adjust the binding/reverse proxy for your private network. Container tooling is optional; local Node.js works independently.
+Docker needs no data volume. Compose binds port 7000 to localhost; use an HTTPS reverse proxy for remote Stremio clients. Credentials are supplied through each installation's configure page.
 
 ## General settings
 
@@ -66,7 +71,7 @@ Search recognizes Chinese language codes (including TMDB’s `zh` and `cn`) **or
 
 ## Catalog builder
 
-Add, edit, duplicate, delete (with undo), enable/disable, drag to reorder, or use keyboard-accessible up/down buttons. Display-name changes keep the catalog ID. Duplicates receive a new ID. Click **Apply catalog**, then **Save configuration** to persist.
+Add, edit, duplicate, delete (with undo), enable/disable, drag to reorder, or use keyboard-accessible up/down buttons. Display-name changes keep the catalog ID. Duplicates receive a new ID. Click **Apply catalog**, then **Save configuration** to update your personal link.
 
 | Filter | TMDB parameter |
 | --- | --- |
@@ -95,16 +100,14 @@ TMDB can still return English genre labels for entries without a Chinese label, 
 - For a catalog with multiple included genres, the Stremio genre menu contains only those included genres. Selecting one narrows the union to that genre. cNative does not invent unsupported grouped boolean query syntax or filter Discover results after fetching.
 - Discover uses TMDB’s 20-item pages: `page = floor(skip / 20) + 1`. Non-aligned offsets slice only the remainder of that single upstream page. Requests beyond TMDB’s 500-page ceiling return an empty list.
 - Search is a separate, search-only catalog. It queries `/search/tv` without translating the query, then applies the configured Chinese-content scope. V1 returns the first upstream search page (up to 20 results before scope filtering); it does not advertise `skip` for search. This avoids mapping a filtered result count to the wrong TMDB page. Discover catalogs support full pagination independently.
-- Stremio may cache installed manifests. After changing names, order, visibility or enabled catalogs, remove/reinstall the addon from the same manifest URL to refresh its layout.
+- Stremio may cache installed manifests. After changing names, order, visibility or enabled catalogs, reinstall the addon using the newly generated manifest URL to refresh its layout.
 - Catalog, search and detailed metadata use `cnative:tt1234567` when IMDb is available, otherwise `cnative:tmdb:123`. The manifest advertises metadata for `cnative:` IDs so other providers do not replace Chinese details. Each response also supplies `tmdb_id` and, when available, `imdb_id` as separate identifiers for client rating lookups and matching. Episodes retain standard `tt1234567:1:1` or `tmdb:123:1:1` IDs. cNative only queries TMDB and does not supply an IMDb rating.
 - Only regular seasons are loaded. Empty/non-Chinese episode names fall back to `第 N 集`. Existing overview, runtime, air date and still are retained. Unknown air dates are omitted rather than invented; some Stremio clients may omit undated episodes. Season posters are included as an optional `seasonPoster` extension; client support varies.
 - Missing posters/backgrounds/stills are omitted; no URLs contain `null` or `undefined`. Detail metadata does not label TMDB ratings as IMDb ratings.
 - Catalog/search previews and detailed metadata supply Stremio's `logo` field from existing TMDB Chinese title artwork. Details append images to the cached `zh-CN` series request; previews use the cached TV images endpoint. Both use `include_image_language=zh`. Optional artwork failures do not hide catalog results. The highest-rated usable Chinese logo is selected, with vote count breaking ties; SVG paths request TMDB's PNG rendering. The text `name` is always retained for accessibility and client fallback. When Chinese artwork is absent, untagged, or invalid, `logo` is omitted so the client can display the title as text. English artwork is not substituted.
 - Use the **cNative · 华语搜索** search row for native titles. Other addons may independently show English results for the same query; cNative cannot rename those results.
 
-### Updating to separate metadata and rating IDs
-
-Save your TMDB API key through General Settings, then remove and reinstall cNative using the same manifest URL to load version 1.0.4 with the name **cNative**. Restart the client and reopen its catalog or **cNative**. Shared IMDb entries from version 1.0.2 remain separate from cNative's metadata IDs. The addon does not rewrite your library or watch history.
+### Metadata and rating IDs
 
 cNative returns Chinese titles, descriptions, logos and episodes under its own IDs. Clients must explicitly support the separate `imdb_id` field to use their own rating lookup for these entries; unmodified clients that only recognize primary IMDb IDs may show no badge. Titles without an IMDb mapping also have no IMDb badge. The coordinated Harbor changes live in the separate Harbor source project; no client source or builds are bundled into cNative.
 
@@ -119,21 +122,21 @@ The [Stremio manifest protocol](https://github.com/Stremio/stremio-addon-sdk/blo
 ## API
 
 ```text
-GET /configure/
-GET /api/config
-PUT /api/config             application/json; whole validated configuration
-GET /api/lookups            genres, countries, languages
-GET /api/status             saved credential presence only; no secrets
-PUT /api/credentials        required apiKey, optional token; returns status only
-GET /manifest.json
-GET /catalog/series/<catalog-id>.json
-GET /catalog/series/<catalog-id>/genre=<encoded-name>&skip=20.json
-GET /catalog/series/cnative_search/search=<encoded-query>.json
-GET /meta/series/cnative:tt1234567.json
-GET /meta/series/cnative:tmdb:123.json
-GET /meta/series/tt1234567.json
-GET /meta/series/tmdb:123.json
+GET  /configure
+GET  /<config>/configure
+GET  /api/status                service health only
+POST /api/configure             validate { version: 1, config, credentials }; return { encodedConfig }
+POST /api/lookups               { apiKey, token? }; genres, countries, languages
+GET  /manifest.json             public, configuration required
+GET  /<config>/manifest.json
+GET  /<config>/catalog/series/<catalog-id>.json
+GET  /<config>/catalog/series/<catalog-id>/genre=<encoded-name>&skip=20.json
+GET  /<config>/catalog/series/cnative_search/search=<encoded-query>.json
+GET  /<config>/meta/series/cnative:tt1234567.json
+GET  /<config>/meta/series/cnative:tmdb:123.json
 ```
+
+The POST endpoints accept JSON and validate credentials without persisting anything. They reject cross-origin browser requests. Stremio resource endpoints support CORS. No shared settings update endpoint remains.
 
 Stremio extras are URL-encoded path components, not ordinary URL query parameters. Search terms containing `&` must encode it as `%26`.
 
@@ -142,12 +145,14 @@ Stremio extras are URL-encoded path components, not ordinary URL query parameter
 ```text
 configure/src/       React + TypeScript + Vite configuration UI
 shared/config.ts     Canonical Zod schemas, types, defaults, sort choices
+shared/installation.ts  Versioned installation schema and URL codec
+api/index.ts         Vercel Function entry point
 addon/src/
   app.ts             Express config API, static UI, Stremio HTTP transport
   stremio.ts         Typed SDK runtime boundary
   manifest.ts        Dynamic enabled catalogs, order, extras and Home visibility
   handlers/          Thin Stremio resource handlers
-  config/            Validated, atomic JSON ConfigStore
+  config/            Shared schema and default exports
   catalogs/          Discover query builder and catalog/search services
   providers/tmdb/    Validated TMDB responses, native fetch, timeout, concurrency limit
   metadata/          Chinese metadata mapping, season/episode mapping, coverage metrics
@@ -158,9 +163,9 @@ addon/scripts/       Live metadata coverage CLI
 tests/               Unit and HTTP integration tests with explicit TMDB fixtures
 ```
 
-TMDB metadata requests use `language=zh-CN`. Genre lists additionally use `en-US` to supply existing English labels alongside Chinese labels in the editor, Stremio filters, and metadata. At most six requests run concurrently with a 12-second timeout each. Upstream failures are surfaced, not cached as success or converted to missing IMDb mappings.
+TMDB metadata requests use `language=zh-CN`. Genre lists additionally use `en-US` to supply existing English labels alongside Chinese labels in the editor, Stremio filters, and metadata. Per TMDB client, at most six requests run concurrently with a 12-second timeout each. Upstream failures are surfaced, not cached as success or converted to missing IMDb mappings.
 
-Cache lifetimes: catalog/search 5 minutes; series/seasons 6 hours; lookup lists 24 hours; ID mappings 30 days. Cache sizes are bounded, process-local, and cleared on restart. Configuration changes affect request keys immediately. HTTP responses use `no-store` to avoid an intermediary retaining old configuration behavior.
+Cache lifetimes: catalog/search 5 minutes; series/seasons 6 hours; lookup lists 24 hours; ID mappings 30 days. Caches are isolated by credentials, bounded to 20 active runtimes, process-local, and cleared on restart. Settings themselves are passed separately to every request. Configuration changes affect request keys immediately. HTTP responses use `no-store` to avoid an intermediary retaining old configuration behavior.
 
 The SDK validates the manifest and dispatches handlers; Express handles HTTP. A narrow typed boundary describes the SDK’s actual positional `get` method and metadata shapes because its DefinitelyTyped declarations are outdated. The lockfile includes patched SDK transitive dependencies through scoped overrides.
 
@@ -172,9 +177,9 @@ npm test
 npm run build
 ```
 
-Tests cover configuration validation/persistence, every sort and filter, inclusive genre matching, bilingual labels, native genre selection, pagination, ID mapping, Chinese metadata/episode fallback policy, search, caching, HTTP endpoints and manifest controls. Tests use fixtures, not live TMDB, and need no credentials. The sample title in tests is fixture data and does not prove current TMDB coverage.
+Tests cover configuration validation, URL round trips, cold restarts, user isolation, reconfiguration, every sort and filter, inclusive genre matching, bilingual labels, native genre selection, pagination, ID mapping, Chinese metadata/episode fallback policy, search, caching, HTTP endpoints and manifest controls. Tests use fixtures, not live TMDB, and need no credentials. The sample title in tests is fixture data and does not prove current TMDB coverage.
 
-Manual installation check with a configured server:
+Manual installation check with a personal installation URL:
 
 1. Create `大陆热门剧集`, country China, language Chinese, popularity descending, minimum rating 6, minimum votes 20. Save.
 2. Fetch its catalog endpoint and confirm the response contains native names and Chinese descriptions where TMDB has them.
@@ -185,7 +190,7 @@ Manual installation check with a configured server:
 
 ## Measure metadata coverage
 
-Run against the first enabled catalog (20 series by default):
+Set `CNATIVE_MANIFEST_URL` in your ignored local `.env` to your personal manifest URL, then run against its first enabled catalog (20 series by default). Treat this value as a secret:
 
 ```sh
 npm run metadata:coverage
