@@ -1,0 +1,16 @@
+import { useState } from 'react';
+import { sortOptions, type CatalogConfig } from '../../../shared/config';
+import { reorderCatalogs } from '../catalog-actions';
+import { Toggle } from './Toggle';
+
+interface Props { catalogs: CatalogConfig[]; onChange: (catalogs: CatalogConfig[]) => void; onEdit: (catalog: CatalogConfig) => void; onDuplicate: (catalog: CatalogConfig) => void; onDelete: (catalog: CatalogConfig) => void }
+export function CatalogList({ catalogs, onChange, onEdit, onDuplicate, onDelete }: Props) {
+  const [dragged, setDragged] = useState<string>();
+  const regions = new Intl.DisplayNames(['en'], { type: 'region' });
+  const languages = new Intl.DisplayNames(['en'], { type: 'language' });
+  return <div className="catalog-list">{catalogs.map((catalog, index) => <article key={catalog.id} className={`catalog-card ${catalog.enabled ? '' : 'disabled'} ${dragged === catalog.id ? 'dragging' : ''}`} draggable onDragStart={event => { setDragged(catalog.id); event.dataTransfer.setData('text/plain', catalog.id); event.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => setDragged(undefined)} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); onChange(reorderCatalogs(catalogs, event.dataTransfer.getData('text/plain'), index)); setDragged(undefined); }}>
+    <div className="card-top"><span className="drag-handle" title="Drag to reorder" aria-hidden="true">⠿</span><span className="catalog-number">{String(index + 1).padStart(2, '0')}</span><h3>{catalog.name}</h3><Toggle checked={catalog.enabled} label={catalog.enabled ? 'Enabled' : 'Disabled'} onChange={enabled => onChange(catalogs.map(item => item.id === catalog.id ? { ...item, enabled } : item))} /></div>
+    <div className="card-content"><p className="catalog-origin">{catalog.originCountry ? regions.of(catalog.originCountry) : 'Any country'}<span>·</span>{catalog.originalLanguage ? languages.of(catalog.originalLanguage === 'cn' ? 'yue' : catalog.originalLanguage) : 'Any language'}</p><p className="sort-summary">{sortOptions.find(([key]) => key === catalog.sortBy)?.[1]}</p><div className="filter-tags"><span>Rating {catalog.voteAverageMin ?? 0}–{catalog.voteAverageMax ?? 10}</span><span>{catalog.voteCountMin ?? 0}+ votes</span>{catalog.releasedOnly && <span>Released only</span>}{catalog.includeGenres.length > 0 && <span>{catalog.includeGenres.length} selected genre{catalog.includeGenres.length === 1 ? '' : 's'}</span>}</div></div>
+    <div className="card-footer"><Toggle label="Show on Home" checked={catalog.showInHome} onChange={showInHome => onChange(catalogs.map(item => item.id === catalog.id ? { ...item, showInHome } : item))} /><div className="card-actions"><button className="icon-button" aria-label={`Move ${catalog.name} up`} disabled={index === 0} onClick={() => onChange(reorderCatalogs(catalogs, catalog.id, index - 1))}>↑</button><button className="icon-button" aria-label={`Move ${catalog.name} down`} disabled={index === catalogs.length - 1} onClick={() => onChange(reorderCatalogs(catalogs, catalog.id, index + 1))}>↓</button><button onClick={() => onEdit(catalog)}>Edit</button><button onClick={() => onDuplicate(catalog)}>Duplicate</button><button className="danger-text" aria-label={`Delete ${catalog.name}`} onClick={() => onDelete(catalog)}>Delete</button></div></div>
+  </article>)}</div>;
+}

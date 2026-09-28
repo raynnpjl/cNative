@@ -1,0 +1,51 @@
+{
+  "name": "cnative",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n addon,configure \"npm:dev:addon\" \"npm:dev:configure\"",
+    "dev:addon": "tsx watch addon/src/index.ts",
+    "dev:configure": "vite --config configure/vite.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p configure/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "npm run typecheck && tsc -p addon/tsconfig.json && vite build --config configure/vite.config.ts",
+    "start": "node dist/addon/src/index.js",
+    "metadata:coverage": "tsx addon/scripts/metadata-coverage.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "stremio-addon-sdk": "^1.6.10",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.18.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/stremio-addon-sdk": "^1.6.12",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "jsdom": "^26.1.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0",
+    "vitest": "^5.0.2"
+  },
+  "overrides": {
+    "stremio-addon-sdk": {
+      "router": {
+        "path-to-regexp": "^0.1.13"
+      }
+    },
+    "tmp": "^0.2.6"
+  }
+}

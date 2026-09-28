@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+*.tmdb.json
+data/*
+!data/.gitkeep
+coverage/
+.DS_Store
+graphify-out/
+docs/
+data/

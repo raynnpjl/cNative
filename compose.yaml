@@ -1,0 +1,16 @@
+services:
+  cnative:
+    build: .
+    ports:
+      - "127.0.0.1:7000:7000"
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 7000
+      CONFIG_PATH: /data/config.json
+    volumes:
+      - cnative-data:/data
+    restart: unless-stopped
+
+volumes:
+  cnative-data:
