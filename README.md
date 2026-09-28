@@ -105,7 +105,7 @@ TMDB can still return English genre labels for entries without a Chinese label, 
 - Only regular seasons are loaded. Empty/non-Chinese episode names fall back to `第 N 集`. Existing overview, runtime, air date and still are retained. Unknown air dates are omitted rather than invented; some Stremio clients may omit undated episodes. Season posters are included as an optional `seasonPoster` extension; client support varies.
 - Missing posters/backgrounds/stills are omitted; no URLs contain `null` or `undefined`. Detail metadata does not label TMDB ratings as IMDb ratings.
 - Catalog/search previews and detailed metadata supply Stremio's `logo` field from existing TMDB Chinese title artwork. Details append images to the cached `zh-CN` series request; previews use the cached TV images endpoint. Both use `include_image_language=zh`. Optional artwork failures do not hide catalog results. The highest-rated usable Chinese logo is selected, with vote count breaking ties; SVG paths request TMDB's PNG rendering. The text `name` is always retained for accessibility and client fallback. When Chinese artwork is absent, untagged, or invalid, `logo` is omitted so the client can display the title as text. English artwork is not substituted.
-- Use the **cNative · 华语搜索** search row for native titles. Other addons may independently show English results for the same query; cNative cannot rename those results.
+- Use the **cNative** search row for native titles. Other addons may independently show English results for the same query; cNative cannot rename those results.
 
 ### Metadata and rating IDs
 
@@ -113,7 +113,7 @@ cNative returns Chinese titles, descriptions, logos and episodes under its own I
 
 ### Client search behavior
 
-cNative controls the titles, metadata and results returned by its own **cNative · 华语搜索** catalog. The updated Harbor client prefers an exact cNative title match or the cNative entry for the same show identified by IMDb/TMDB IDs, and deduplicates those entries. Without cNative installed, Harbor uses its usual providers. This ranking is implemented in Harbor; other clients choose their own global Top match.
+cNative controls the titles, metadata and results returned by its own **cNative** catalog. The updated Harbor client prefers an exact cNative title match or the cNative entry for the same show identified by IMDb/TMDB IDs, and deduplicates those entries. Without cNative installed, Harbor uses its usual providers. This ranking is implemented in Harbor; other clients choose their own global Top match.
 
 Searching the addon directly for `逐玉` or `Pursuit of Jade` returns the native title `逐玉` when TMDB contains those names. Queries are sent unchanged to TMDB; no translation or second metadata source is used.
 
@@ -185,7 +185,7 @@ Manual installation check with a personal installation URL:
 2. Fetch its catalog endpoint and confirm the response contains native names and Chinese descriptions where TMDB has them.
 3. Install the manifest in Stremio. Open the catalog, select a Chinese genre and scroll to another page.
 4. Open a series from cNative, verify its `cnative:` metadata ID, separate `imdb_id` where available, standard episode IDs and Chinese episode metadata. In the updated Harbor client, check the IMDb badge without an English metadata replacement.
-5. Search by original and international title. Use the **cNative · 华语搜索** row; other addons can show their own results. Results depend on TMDB’s stored names and alternatives.
+5. Search by original and international title. Use the **cNative** row; other addons can show their own results. Results depend on TMDB’s stored names and alternatives.
 6. Reorder/disable/hide catalogs, save and reinstall. Verify Home versus Discover visibility.
 
 ## Measure metadata coverage

@@ -92,7 +92,7 @@ describe('Stremio and configuration HTTP', () => {
     }
     const manifest = await (await get('/manifest.json')).json();
     expect(manifest.resources).toContainEqual({ name: 'meta', types: ['series'], idPrefixes: ['cnative:'] });
-    expect(manifest.catalogs).toContainEqual(expect.objectContaining({ id: 'cnative_search', name: 'cNative · 华语搜索' }));
+    expect(manifest.catalogs).toContainEqual(expect.objectContaining({ id: 'cnative_search', name: 'cNative' }));
   });
   it('searches once, retains literal ampersands and uses OR Chinese filtering', async () => {
     const query = '逐玉 & Pursuit of Jade';
