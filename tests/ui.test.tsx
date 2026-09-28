@@ -173,6 +173,25 @@ it('does not accept token-only setup and preserves input on a rejected save', as
   expect((token as HTMLInputElement).value).toBe('read-token');
 });
 
+it.each([
+  [405, ''],
+  [502, '<html>Upstream unavailable</html>'],
+])('explains an unreadable save response (HTTP %s) and keeps installation disabled', async (status, body) => {
+  window.history.replaceState(null, '', '/configure');
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(body, { status }));
+  render(<App />);
+  const apiKey = await screen.findByLabelText('TMDB API key (required)');
+  const token = screen.getByLabelText('Read access token (optional)');
+  fireEvent.change(apiKey, { target: { value: 'user-api-key' } });
+  fireEvent.change(token, { target: { value: 'user-token' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(`The addon server returned an invalid response (HTTP ${status}).`);
+  expect((apiKey as HTMLInputElement).value).toBe('user-api-key');
+  expect((token as HTMLInputElement).value).toBe('user-token');
+  expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
+  expect((screen.getByRole('button', { name: /Copy manifest URL/ }) as HTMLButtonElement).disabled).toBe(true);
+});
+
 it('restores credentials and catalogs from the link and gates unsaved credential edits', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });

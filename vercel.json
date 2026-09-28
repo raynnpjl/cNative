@@ -12,6 +12,7 @@
     ] }
   ],
   "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/index" },
     { "source": "/configure", "destination": "/index.html" },
     { "source": "/:configuration/configure", "destination": "/index.html" },
     { "source": "/(.*)", "destination": "/api/index" }

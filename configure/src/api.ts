@@ -7,7 +7,9 @@ async function request<T>(path: string, schema: z.ZodType<T>, body: unknown): Pr
   const response = await fetch(path, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), referrerPolicy: 'no-referrer',
   });
-  const result: unknown = await response.json();
+  let result: unknown;
+  try { result = await response.json(); }
+  catch { throw new Error(`The addon server returned an invalid response (HTTP ${response.status}).`); }
   if (!response.ok) {
     const parsed = z.object({ error: z.string() }).safeParse(result);
     throw new Error(parsed.success ? parsed.data.error : `Request failed (${response.status})`);
