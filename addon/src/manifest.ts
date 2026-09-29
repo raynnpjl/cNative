@@ -2,7 +2,7 @@ import type { Manifest, ManifestCatalog } from 'stremio-addon-sdk';
 import type { AddonConfig } from './config/config.schema.js';
 import type { Genre } from './providers/tmdb/tmdb.types.js';
 import { ALL_GENRES, SEARCH_CATALOG_ID } from './catalogs/catalog.service.js';
-import { CNATIVE_ID_PREFIX } from './ids/id-resolver.service.js';
+import { CNATIVE_ID_PREFIX } from './ids/metadata-id.js';
 
 interface CNativeManifest extends Manifest {
   stremioAddonsConfig: { issuer: string; signature: string };
@@ -10,12 +10,12 @@ interface CNativeManifest extends Manifest {
 
 export function buildManifest(config: AddonConfig, genres: Genre[], configured: boolean): CNativeManifest {
   return {
-    id: 'org.cnative.tv', version: '1.1.0', name: 'cNative',
+    id: 'org.cnative.tv', version: '1.2.0', name: 'cNative',
     stremioAddonsConfig: {
       issuer: 'https://stremio-addons.net',
       signature: 'eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..f1tKdVu9r9pulRewImYz4w.KfyclNTDbdfiBdT-YOHq8-38Xm5fR9SxwaTPVz1Refc2tBVWYp3i-C58KPbZp9OaZjMJfr6WVnWkAt88yTaxggd_Hkg0OCyFYeFELlUNb20UzhSvJPDxYwWSf5h0iPZc.KTgsZgyYJswNzdaN1ejaHA',
     },
-    description: 'Chinese dramas with native titles and existing Chinese TMDB metadata. No translation.',
+    description: 'Chinese dramas with per-catalog English or Simplified Chinese TMDB metadata. No machine translation.',
     types: ['series'],
     resources: ['catalog', { name: 'meta', types: ['series'], idPrefixes: [CNATIVE_ID_PREFIX] }],
     behaviorHints: { configurable: true, configurationRequired: !configured, adult: config.includeAdult, p2p: false },

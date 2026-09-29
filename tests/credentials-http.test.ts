@@ -60,6 +60,32 @@ it('validates a key and creates a personal URL that works after a cold restart',
   expect(await (await get('/manifest.json')).json()).toMatchObject({ behaviorHints: { configurationRequired: true } });
 });
 
+it('restores separate catalog languages after encryption and a cold restart without exposing credentials', async () => {
+  const config = createDefaultConfig();
+  config.catalogs = [
+    { ...config.catalogs[0]!, synopsisLanguage: 'en-US', episodeNameLanguage: 'en-US' },
+    { ...config.catalogs[0]!, id: 'catalog_english', titleLanguage: 'en-US' },
+  ];
+  const saved = await post('/api/configure', { config, credentialChanges: { apiKey: 'private-key', token: 'private-token' } });
+  expect(saved.status).toBe(200);
+  const { encodedConfig } = await saved.json();
+  await stop(); await start();
+  const restored = await post('/api/configuration', { encodedConfig });
+  const text = await restored.text();
+  expect(text).not.toMatch(/private-key|private-token/);
+  expect(JSON.parse(text)).toEqual({ config, credentialStatus: { hasApiKey: true, hasReadAccessToken: true } });
+  const ids: string[] = [];
+  for (const catalog of config.catalogs) {
+    const { metas } = await (await get(`/${encodedConfig}/catalog/series/${catalog.id}.json`)).json();
+    const { meta } = await (await get(`/${encodedConfig}/meta/series/${encodeURIComponent(metas[0].id)}.json`)).json();
+    ids.push(meta.id);
+    expect(meta.id).toBe(metas[0].id);
+    expect(meta.name).toBe(catalog.titleLanguage === 'en-US' ? 'Pursuit of Jade' : '逐玉');
+    expect(meta.videos[0].id).toBe('tt1234567:1:1');
+  }
+  expect(ids).toEqual(['cnative:zh-en-en:tt1234567', 'cnative:en-zh-zh:tt1234567']);
+});
+
 it.each([{}, { apiKey: '  ' }, { token: 'token-only' }])('requires the API key: %j', async credentials => {
   expect((await save(credentials)).status).toBe(400);
   expect(fixture.fetcher).not.toHaveBeenCalled();
@@ -99,8 +125,8 @@ it.each(['key', 'token'])('rejects an invalid %s through both Save and direct ma
 it('keeps concurrent users and configurations isolated, including caches', async () => {
   const first = { version: 1 as const, credentials: { apiKey: 'first' }, config: createDefaultConfig() };
   const second = { version: 1 as const, credentials: { apiKey: 'second', token: 'second-token' }, config: createDefaultConfig() };
-  first.config.catalogs[0]!.name = 'First'; first.config.catalogs[0]!.originCountry = 'CN';
-  second.config.catalogs[0]!.name = 'Second'; second.config.catalogs[0]!.originCountry = 'TW';
+  first.config.catalogs[0]!.name = 'First'; first.config.catalogs[0]!.sortBy = 'popularity.desc';
+  second.config.catalogs[0]!.name = 'Second'; second.config.catalogs[0]!.sortBy = 'vote_average.desc';
   const a = encodeInstallation(first); const b = encodeInstallation(second);
   const results = await Promise.all([get(`/${a}/manifest.json`), get(`/${b}/manifest.json`)]);
   expect((await results[0]!.json()).catalogs[0].name).toBe('First');
@@ -113,7 +139,8 @@ it('keeps concurrent users and configurations isolated, including caches', async
   expect(calls).toHaveLength(2);
   for (const [input, init] of calls) {
     const url = new URL(String(input));
-    if (url.searchParams.get('with_origin_country') === 'CN') {
+    expect(url.searchParams.get('with_origin_country')).toBe('CN');
+    if (url.searchParams.get('sort_by') === 'popularity.desc') {
       expect(url.searchParams.get('api_key')).toBe('first');
       expect(new Headers(init?.headers).has('Authorization')).toBe(false);
     } else expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer second-token');
@@ -121,7 +148,7 @@ it('keeps concurrent users and configurations isolated, including caches', async
   // Same credentials, different settings must also remain independent.
   const c = encodeInstallation({ ...second, credentials: first.credentials });
   expect((await get(`/${c}/catalog/series/catalog_default.json`)).status).toBe(200);
-  expect(fixture.urls.filter(url => url.pathname.endsWith('/discover/tv')).at(-1)?.searchParams.get('with_origin_country')).toBe('TW');
+  expect(fixture.urls.filter(url => url.pathname.endsWith('/discover/tv')).at(-1)?.searchParams.get('sort_by')).toBe('vote_average.desc');
   expect((await (await get(`/${a}/manifest.json`)).json()).catalogs[0].name).toBe('First');
 });
 

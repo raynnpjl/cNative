@@ -8,7 +8,7 @@ const installation = () => ({ version: 1 as const, config: createDefaultConfig()
 describe('personal installation links', () => {
   it('round trips Unicode, punctuation, every catalog field and credentials', () => {
     const input = installation();
-    Object.assign(input.config.catalogs[0]!, { name: '剧集 & / + 😃', originCountry: 'CN', firstAirDateFrom: '2020-01-01', firstAirDateTo: '2026-01-01', runtimeMin: 10, runtimeMax: 90, excludeGenres: [35], showInHome: false });
+    Object.assign(input.config.catalogs[0]!, { name: '剧集 & / + 😃', firstAirDateFrom: '2020-01-01', firstAirDateTo: '2026-01-01', runtimeMin: 10, runtimeMax: 90, excludeGenres: [35], showInHome: false });
     const encoded = encodeInstallation(input);
     expect(encoded).toMatch(/^e1\.[A-Za-z0-9_-]+$/);
     expect(decodeInstallation(encoded)).toEqual(input);

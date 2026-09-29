@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const ORIGIN_COUNTRY = 'CN';
+
 export const sortOptions = [
   ['popularity.desc', 'Popularity — High to Low'],
   ['popularity.asc', 'Popularity — Low to High'],
@@ -16,14 +18,25 @@ export type TmdbTvSort = z.infer<typeof tmdbTvSortSchema>;
 const genreIds = z.array(z.number().int().positive()).max(100)
   .refine(ids => new Set(ids).size === ids.length, 'Duplicate genre IDs');
 
+export const displayLanguageSchema = z.enum(['zh-CN', 'en-US']);
+export type DisplayLanguage = z.infer<typeof displayLanguageSchema>;
+const displayLanguagesSchema = z.object({
+  titleLanguage: displayLanguageSchema,
+  synopsisLanguage: displayLanguageSchema,
+  episodeNameLanguage: displayLanguageSchema,
+});
+export type DisplayLanguages = z.infer<typeof displayLanguagesSchema>;
+export const chineseDisplayLanguages: DisplayLanguages = {
+  titleLanguage: 'zh-CN', synopsisLanguage: 'zh-CN', episodeNameLanguage: 'zh-CN',
+};
+
 export const catalogConfigSchema = z.strictObject({
+  ...displayLanguagesSchema.shape,
   id: z.string().regex(/^catalog_[a-zA-Z0-9_-]{1,80}$/),
   name: z.string().trim().min(1).max(100),
   enabled: z.boolean(),
   showInHome: z.boolean(),
   sortBy: tmdbTvSortSchema,
-  originCountry: z.string().regex(/^[A-Z]{2}$/).optional(),
-  originalLanguage: z.string().regex(/^[a-z]{2,3}$/).optional(),
   includeGenres: genreIds,
   excludeGenres: genreIds,
   firstAirDateFrom: z.iso.date().optional(),
@@ -53,10 +66,7 @@ export const catalogConfigSchema = z.strictObject({
 });
 
 export const addonConfigSchema = z.strictObject({
-  metadataLanguage: z.literal('zh-CN'),
-  titleMode: z.enum(['native', 'localized']),
   includeAdult: z.boolean(),
-  searchScope: z.enum(['chinese', 'all']),
   catalogs: z.array(catalogConfigSchema).max(50),
 }).superRefine((config, ctx) => {
   if (new Set(config.catalogs.map(catalog => catalog.id)).size !== config.catalogs.length) {
@@ -69,22 +79,21 @@ export type AddonConfig = z.infer<typeof addonConfigSchema>;
 
 export function createCatalog(id: string, name = '新建剧集目录'): CatalogConfig {
   return {
+    ...chineseDisplayLanguages,
     id, name, enabled: true, showInHome: true, sortBy: 'popularity.desc',
-    originalLanguage: 'zh', includeGenres: [], excludeGenres: [],
+    includeGenres: [], excludeGenres: [],
     voteAverageMin: 0, voteAverageMax: 10, voteCountMin: 0, releasedOnly: true,
   };
 }
 
 export function createDefaultConfig(): AddonConfig {
   return {
-    metadataLanguage: 'zh-CN', titleMode: 'native', includeAdult: false, searchScope: 'chinese',
+    includeAdult: false,
     catalogs: [{ ...createCatalog('catalog_default', '华语热门剧集'), includeGenres: [18] }],
   };
 }
 
 export const lookupSchema = z.object({
   genres: z.array(z.object({ id: z.number().int(), name: z.string() })),
-  countries: z.array(z.object({ iso_3166_1: z.string(), english_name: z.string(), native_name: z.string().optional() })),
-  languages: z.array(z.object({ iso_639_1: z.string(), english_name: z.string(), name: z.string() })),
 });
 export type Lookups = z.infer<typeof lookupSchema>;

@@ -36,13 +36,15 @@ describe('TMDB client', () => {
     expect(await new TmdbClient({ token: 'test', fetcher }).genres()).toEqual([{ id: 10765, name: 'Sci-Fi & Fantasy' }]);
   });
   it('uses Bearer auth and caches lookups, catalog, search, series and seasons', async () => {
-    const { client, fetcher } = tmdbFixture();
-    await client.lookups(); await client.lookups();
+    const { client, fetcher, urls } = tmdbFixture();
+    expect(await client.lookups()).toEqual({ genres: await client.genres() });
+    await client.lookups();
     await client.discover({ page: 1 }); await client.discover({ page: 1 });
     await client.search('逐玉', 1, false); await client.search('逐玉', 1, false);
     await client.series(101); await client.series(101);
     await client.season(101, 1); await client.season(101, 1);
-    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(fetcher).toHaveBeenCalledTimes(6);
+    expect(urls.some(url => url.pathname.startsWith('/3/configuration/'))).toBe(false);
     expect(fetcher.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: 'Bearer test-token' });
   });
   it('appends Chinese title images to the cached localized series request', async () => {

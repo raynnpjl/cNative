@@ -9,16 +9,16 @@ const base = () => createCatalog('catalog_test');
 describe('TMDB Discover builder', () => {
   it('maps the requested mainland catalog and every numeric/date filter', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-28T12:00:00Z'));
-    expect(buildDiscoverQuery({ ...base(), originCountry: 'CN', includeGenres: [18], voteAverageMin: 6, voteAverageMax: 9, voteCountMin: 20, runtimeMin: 30, runtimeMax: 60, firstAirDateFrom: '2020-01-01' }, 2)).toEqual({
-      language: 'zh-CN', page: 2, sort_by: 'popularity.desc', with_origin_country: 'CN', with_original_language: 'zh', with_genres: '18',
+    expect(buildDiscoverQuery({ ...base(), includeGenres: [18], voteAverageMin: 6, voteAverageMax: 9, voteCountMin: 20, runtimeMin: 30, runtimeMax: 60, firstAirDateFrom: '2020-01-01' }, 2)).toEqual({
+      language: 'zh-CN', page: 2, sort_by: 'popularity.desc', with_origin_country: 'CN', with_genres: '18',
       'vote_average.gte': 6, 'vote_average.lte': 9, 'vote_count.gte': 20, 'with_runtime.gte': 30, 'with_runtime.lte': 60,
       'first_air_date.gte': '2020-01-01', 'first_air_date.lte': '2026-09-28', include_null_first_air_dates: false,
     });
   });
   it.each(sortOptions)('passes through %s', sortBy => { expect(buildDiscoverQuery({ ...base(), sortBy }, 1).sort_by).toBe(sortBy); });
   it('omits unconfigured filters and retains zeros', () => {
-    const query = buildDiscoverQuery({ ...base(), releasedOnly: false, originalLanguage: undefined, voteAverageMax: undefined }, 1);
-    expect(query).not.toHaveProperty('with_origin_country');
+    const query = buildDiscoverQuery({ ...base(), releasedOnly: false, voteAverageMax: undefined }, 1);
+    expect(query.with_origin_country).toBe('CN');
     expect(query).not.toHaveProperty('with_genres');
     expect(query).not.toHaveProperty('first_air_date.lte');
     expect(query).not.toHaveProperty('with_original_language');

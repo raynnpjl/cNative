@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { MemoryCache, TTL } from '../../cache/memory-cache.js';
 import type { TmdbQuery } from '../../catalogs/discover-query.builder.js';
-import { lookupSchema, type Lookups } from '../../../../shared/config.js';
+import type { DisplayLanguage, Lookups } from '../../../../shared/config.js';
 import { TmdbError } from '../../utils/errors.js';
 import { externalIdsSchema, findSchema, genreSchema, imagesSchema, seasonSchema, seriesDetailSchema, seriesPageSchema } from './tmdb.types.js';
 
@@ -32,7 +32,7 @@ export class TmdbClient {
     }
   }
 
-  private async request<T>(path: string, schema: z.ZodType<T>, query: TmdbQuery = {}, ttl: number = TTL.metadata, language: 'zh-CN' | 'en-US' = 'zh-CN'): Promise<T> {
+  private async request<T>(path: string, schema: z.ZodType<T>, query: TmdbQuery = {}, ttl: number = TTL.metadata, language: DisplayLanguage = 'zh-CN'): Promise<T> {
     if (!this.configured) throw new TmdbError(503);
     const parameters = new URLSearchParams();
     for (const [key, value] of Object.entries({ ...query, language }).sort(([a], [b]) => a.localeCompare(b))) {
@@ -62,11 +62,11 @@ export class TmdbClient {
   search(query: string, page: number, includeAdult: boolean) {
     return this.request('/search/tv', seriesPageSchema, { query, page, include_adult: includeAdult }, TTL.catalog);
   }
-  series(id: number) {
-    return this.request(`/tv/${id}`, seriesDetailSchema, { append_to_response: 'external_ids,credits,images', include_image_language: 'zh' });
+  series(id: number, language: DisplayLanguage = 'zh-CN') {
+    return this.request(`/tv/${id}`, seriesDetailSchema, { append_to_response: 'external_ids,credits,images', include_image_language: language.slice(0, 2) }, TTL.metadata, language);
   }
-  season(id: number, season: number) { return this.request(`/tv/${id}/season/${season}`, seasonSchema); }
-  images(id: number) { return this.request(`/tv/${id}/images`, imagesSchema, { include_image_language: 'zh' }); }
+  season(id: number, season: number, language: DisplayLanguage = 'zh-CN') { return this.request(`/tv/${id}/season/${season}`, seasonSchema, {}, TTL.metadata, language); }
+  images(id: number, language: DisplayLanguage = 'zh-CN') { return this.request(`/tv/${id}/images`, imagesSchema, { include_image_language: language.slice(0, 2) }, TTL.metadata, language); }
   externalIds(id: number) { return this.request(`/tv/${id}/external_ids`, externalIdsSchema, {}, TTL.mapping); }
   find(imdbId: string) { return this.request(`/find/${imdbId}`, findSchema, { external_source: 'imdb_id' }, TTL.mapping); }
   async genres() {
@@ -82,11 +82,6 @@ export class TmdbClient {
     }));
   }
   async lookups(): Promise<Lookups> {
-    const [genres, countries, languages] = await Promise.all([
-      this.genres(),
-      this.request('/configuration/countries', lookupSchema.shape.countries, {}, TTL.lookup),
-      this.request('/configuration/languages', lookupSchema.shape.languages, {}, TTL.lookup),
-    ]);
-    return { genres, countries, languages };
+    return { genres: await this.genres() };
   }
 }

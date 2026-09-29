@@ -35,16 +35,18 @@ const save = async (config: unknown) => {
 describe('Stremio and configuration HTTP', () => {
   it('saves the example catalog and sends all expected upstream filters', async () => {
     const config = createDefaultConfig();
-    Object.assign(config.catalogs[0]!, { name: '大陆热门剧集', originCountry: 'CN', voteAverageMin: 6, voteCountMin: 20 });
+    Object.assign(config.catalogs[0]!, { name: '大陆热门剧集', voteAverageMin: 6, voteCountMin: 20 });
     expect((await save(config)).status).toBe(200);
     const response = await get('/catalog/series/catalog_default.json');
     expect(response.status).toBe(200);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
-    expect(await response.json()).toMatchObject({ metas: [{ id: 'cnative:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉', description: '这是 TMDB 中文剧情简介。', genres: ['剧情 · Drama'] }, ...Array.from({ length: 19 }, () => ({}))] });
+    expect(await response.json()).toMatchObject({ metas: [{ id: 'cnative:zh-zh-zh:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉', description: '这是 TMDB 中文剧情简介。', genres: ['剧情 · Drama'] }, ...Array.from({ length: 19 }, () => ({}))] });
     const query = fixture.urls.find(url => url.pathname.endsWith('/discover/tv'))?.searchParams;
-    expect(Object.fromEntries(query!)).toMatchObject({ language: 'zh-CN', include_adult: 'false', with_origin_country: 'CN', with_original_language: 'zh', sort_by: 'popularity.desc', 'vote_average.gte': '6', 'vote_count.gte': '20', page: '1' });
+    expect(Object.fromEntries(query!)).toMatchObject({ language: 'zh-CN', include_adult: 'false', with_origin_country: 'CN', sort_by: 'popularity.desc', 'vote_average.gte': '6', 'vote_count.gte': '20', page: '1' });
+    expect(query!.has('with_original_language')).toBe(false);
     const manifest = await (await get('/manifest.json')).json();
     expect(manifest.name).toBe('cNative');
+    expect(manifest.version).toBe('1.2.0');
     expect(manifest.behaviorHints.configurationRequired).toBe(false);
     expect(manifest.catalogs[0].name).toBe('大陆热门剧集');
     expect(manifest.catalogs[0].id).toBe('catalog_default');
@@ -68,7 +70,7 @@ describe('Stremio and configuration HTTP', () => {
     expect(fixture.urls.filter(url => url.pathname.endsWith('/discover/tv')).map(url => url.searchParams.get('with_genres'))).toEqual(['18|35', '35']);
   });
   it('returns an IMDb-compatible detailed episode response', async () => {
-    const response = await get('/meta/series/tt1234567.json');
+    const response = await get('/meta/series/cnative:zh-zh-zh:tt1234567.json');
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ meta: { name: '逐玉', videos: [{ id: 'tt1234567:1:1', title: '初见', overview: '相逢的故事。' }] } });
     expect(await (await get('/meta/movie/tt1234567.json')).json()).toEqual({ meta: null });
@@ -81,7 +83,7 @@ describe('Stremio and configuration HTTP', () => {
     for (const path of paths) {
       const catalog = await (await get(path)).json();
       const preview = catalog.metas[0];
-      expect(preview).toMatchObject({ id: 'cnative:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, type: 'series', name: '逐玉', logo: 'https://image.tmdb.org/t/p/w500/chinese-logo.png' });
+      expect(preview).toMatchObject({ id: 'cnative:zh-zh-zh:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, type: 'series', name: '逐玉', logo: 'https://image.tmdb.org/t/p/w500/chinese-logo.png' });
       expect(preview).not.toHaveProperty('imdbRating');
       const response = await get(`/meta/series/${encodeURIComponent(preview.id)}.json`);
       expect(response.status).toBe(200);
@@ -94,11 +96,12 @@ describe('Stremio and configuration HTTP', () => {
     expect(manifest.resources).toContainEqual({ name: 'meta', types: ['series'], idPrefixes: ['cnative:'] });
     expect(manifest.catalogs).toContainEqual(expect.objectContaining({ id: 'cnative_search', name: 'cNative' }));
   });
-  it('searches once, retains literal ampersands and uses OR Chinese filtering', async () => {
+  it('searches once, retains literal ampersands and includes only China origins regardless of language', async () => {
     const query = '逐玉 & Pursuit of Jade';
     const response = await get(`/catalog/series/cnative_search/search=${encodeURIComponent(query)}.json`);
     const body = await response.json();
-    expect(body.metas).toHaveLength(2);
+    expect(body.metas.map((meta: { tmdb_id: number }) => meta.tmdb_id)).toEqual([101, 104]);
+    expect(fixture.urls.filter(url => url.pathname.endsWith('/search/tv'))).toHaveLength(1);
     expect(fixture.urls.find(url => url.pathname.endsWith('/search/tv'))?.searchParams.get('query')).toBe(query);
     expect(await (await get(`/catalog/series/catalog_default/search=${encodeURIComponent(query)}.json`)).json()).toEqual({ metas: [] });
   });
@@ -113,11 +116,11 @@ describe('Stremio and configuration HTTP', () => {
       const response = await get(path);
       expect(response.status).toBe(200);
       const { metas } = await response.json();
-      expect(metas[0]).toMatchObject({ id: 'cnative:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉' });
+      expect(metas[0]).toMatchObject({ id: 'cnative:zh-zh-zh:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉' });
       expect(metas[0]).not.toHaveProperty('logo');
       expect(metas[1].logo).toBe('https://image.tmdb.org/t/p/w500/chinese-logo.png');
     }
-    const images = fixture.urls.filter(url => url.pathname.endsWith('/tv/103/images'));
+    const images = fixture.urls.filter(url => url.pathname.endsWith('/tv/104/images'));
     expect(images).toHaveLength(1);
     expect(images[0]?.searchParams.get('include_image_language')).toBe('zh');
   });
@@ -136,7 +139,7 @@ describe('Stremio and configuration HTTP', () => {
     config.catalogs[0]!.enabled = false;
     await save(config);
     expect((await (await get('/manifest.json')).json()).catalogs).toHaveLength(1);
-    expect(await (await fetch(`${base}/api/lookups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encodedConfig: encoded }) })).json()).toMatchObject({ genres, countries: [{ iso_3166_1: 'CN' }], languages: [{ iso_639_1: 'zh' }] });
+    expect(await (await fetch(`${base}/api/lookups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encodedConfig: encoded }) })).json()).toEqual({ genres });
   });
 });
 
