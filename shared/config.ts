@@ -16,7 +16,20 @@ export type TmdbTvSort = z.infer<typeof tmdbTvSortSchema>;
 const genreIds = z.array(z.number().int().positive()).max(100)
   .refine(ids => new Set(ids).size === ids.length, 'Duplicate genre IDs');
 
+export const displayLanguageSchema = z.enum(['zh-CN', 'en-US']);
+export type DisplayLanguage = z.infer<typeof displayLanguageSchema>;
+const displayLanguagesSchema = z.object({
+  titleLanguage: displayLanguageSchema,
+  synopsisLanguage: displayLanguageSchema,
+  episodeNameLanguage: displayLanguageSchema,
+});
+export type DisplayLanguages = z.infer<typeof displayLanguagesSchema>;
+export const chineseDisplayLanguages: DisplayLanguages = {
+  titleLanguage: 'zh-CN', synopsisLanguage: 'zh-CN', episodeNameLanguage: 'zh-CN',
+};
+
 export const catalogConfigSchema = z.strictObject({
+  ...displayLanguagesSchema.shape,
   id: z.string().regex(/^catalog_[a-zA-Z0-9_-]{1,80}$/),
   name: z.string().trim().min(1).max(100),
   enabled: z.boolean(),
@@ -53,8 +66,6 @@ export const catalogConfigSchema = z.strictObject({
 });
 
 export const addonConfigSchema = z.strictObject({
-  metadataLanguage: z.literal('zh-CN'),
-  titleMode: z.enum(['native', 'localized']),
   includeAdult: z.boolean(),
   searchScope: z.enum(['chinese', 'all']),
   catalogs: z.array(catalogConfigSchema).max(50),
@@ -69,6 +80,7 @@ export type AddonConfig = z.infer<typeof addonConfigSchema>;
 
 export function createCatalog(id: string, name = '新建剧集目录'): CatalogConfig {
   return {
+    ...chineseDisplayLanguages,
     id, name, enabled: true, showInHome: true, sortBy: 'popularity.desc',
     originalLanguage: 'zh', includeGenres: [], excludeGenres: [],
     voteAverageMin: 0, voteAverageMax: 10, voteCountMin: 0, releasedOnly: true,
@@ -77,7 +89,7 @@ export function createCatalog(id: string, name = '新建剧集目录'): CatalogC
 
 export function createDefaultConfig(): AddonConfig {
   return {
-    metadataLanguage: 'zh-CN', titleMode: 'native', includeAdult: false, searchScope: 'chinese',
+    includeAdult: false, searchScope: 'chinese',
     catalogs: [{ ...createCatalog('catalog_default', '华语热门剧集'), includeGenres: [18] }],
   };
 }

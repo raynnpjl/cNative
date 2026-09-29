@@ -5,7 +5,7 @@ export const chineseGenres = [{ id: 18, name: '剧情' }, { id: 35, name: '喜�
 const englishGenres = [{ id: 9648, name: 'Mystery' }, { id: 35, name: 'Comedy' }, { id: 18, name: 'Drama' }];
 export const genres = [{ id: 18, name: '剧情 · Drama' }, { id: 35, name: '喜剧 · Comedy' }, { id: 9648, name: '悬疑 · Mystery' }];
 export const show = {
-  id: 101, name: 'Pursuit of Jade', original_name: '逐玉', original_language: 'zh', origin_country: ['CN'],
+  id: 101, name: '逐玉', original_name: '逐玉', original_language: 'zh', origin_country: ['CN'],
   overview: '这是 TMDB 中文剧情简介。', poster_path: '/poster.jpg', backdrop_path: '/background.jpg',
   first_air_date: '2026-03-01', genre_ids: [18], adult: false,
 };
@@ -21,6 +21,8 @@ export const detail = {
   credits: { cast: [{ name: '演员甲' }] }, external_ids: { imdb_id: 'tt1234567' },
   images: { logos },
 };
+export const englishDetail = { ...detail, name: 'Pursuit of Jade', overview: 'An English synopsis.' };
+export const englishSeason = { ...season, episodes: [{ ...episode, name: 'First Meeting', overview: 'An unexpected encounter.' }] };
 
 export function tmdbFixture() {
   const urls: URL[] = [];
@@ -35,8 +37,11 @@ export function tmdbFixture() {
     else if (path === '/configuration/languages') data = [{ iso_639_1: 'zh', english_name: 'Chinese', name: '中文' }];
     else if (path === '/discover/tv') data = { page: Number(url.searchParams.get('page')), total_pages: 3, total_results: 60, results: Array.from({ length: 20 }, (_, i) => ({ ...show, id: 101 + i })) };
     else if (path === '/search/tv') data = { page: 1, total_pages: 1, total_results: 3, results: [show, { ...show, id: 102, original_language: 'en', origin_country: ['US'] }, { ...show, id: 103, original_language: 'cn', origin_country: ['HK'] }] };
-    else if (path === '/tv/101') data = detail;
-    else if (path === '/tv/101/season/1') data = season;
+    else if (/^\/tv\/1\d\d$/.test(path)) data = {
+      ...(url.searchParams.get('language') === 'en-US' ? englishDetail : detail), id: Number(path.split('/')[2]),
+      external_ids: { imdb_id: path === '/tv/101' ? 'tt1234567' : null },
+    };
+    else if (/^\/tv\/1\d\d\/season\/1$/.test(path)) data = url.searchParams.get('language') === 'en-US' ? englishSeason : season;
     else if (/^\/tv\/\d+\/images$/.test(path)) data = detail.images;
     else if (/^\/tv\/\d+\/external_ids$/.test(path)) data = { imdb_id: path === '/tv/101/external_ids' ? 'tt1234567' : null };
     else if (path === '/find/tt1234567') data = { tv_results: [{ id: 101 }], movie_results: [] };

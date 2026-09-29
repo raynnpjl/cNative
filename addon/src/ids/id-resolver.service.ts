@@ -1,7 +1,6 @@
 import { MemoryCache, TTL } from '../cache/memory-cache.js';
 import type { TmdbClient } from '../providers/tmdb/tmdb.client.js';
 
-export const CNATIVE_ID_PREFIX = 'cnative:';
 export const isImdbId = (value: string): boolean => /^tt\d{7,}$/.test(value);
 
 export class IdResolver {
@@ -27,7 +26,6 @@ export class IdResolver {
   }
 
   async toTmdbId(id: string): Promise<number | null> {
-    if (id.startsWith(CNATIVE_ID_PREFIX)) id = id.slice(CNATIVE_ID_PREFIX.length);
     if (/^tmdb:[1-9]\d*$/.test(id)) {
       const value = Number(id.slice(5));
       return Number.isSafeInteger(value) ? value : null;

@@ -40,7 +40,7 @@ describe('Stremio and configuration HTTP', () => {
     const response = await get('/catalog/series/catalog_default.json');
     expect(response.status).toBe(200);
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
-    expect(await response.json()).toMatchObject({ metas: [{ id: 'cnative:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉', description: '这是 TMDB 中文剧情简介。', genres: ['剧情 · Drama'] }, ...Array.from({ length: 19 }, () => ({}))] });
+    expect(await response.json()).toMatchObject({ metas: [{ id: 'cnative:zh-zh-zh:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉', description: '这是 TMDB 中文剧情简介。', genres: ['剧情 · Drama'] }, ...Array.from({ length: 19 }, () => ({}))] });
     const query = fixture.urls.find(url => url.pathname.endsWith('/discover/tv'))?.searchParams;
     expect(Object.fromEntries(query!)).toMatchObject({ language: 'zh-CN', include_adult: 'false', with_origin_country: 'CN', with_original_language: 'zh', sort_by: 'popularity.desc', 'vote_average.gte': '6', 'vote_count.gte': '20', page: '1' });
     const manifest = await (await get('/manifest.json')).json();
@@ -68,7 +68,7 @@ describe('Stremio and configuration HTTP', () => {
     expect(fixture.urls.filter(url => url.pathname.endsWith('/discover/tv')).map(url => url.searchParams.get('with_genres'))).toEqual(['18|35', '35']);
   });
   it('returns an IMDb-compatible detailed episode response', async () => {
-    const response = await get('/meta/series/tt1234567.json');
+    const response = await get('/meta/series/cnative:zh-zh-zh:tt1234567.json');
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ meta: { name: '逐玉', videos: [{ id: 'tt1234567:1:1', title: '初见', overview: '相逢的故事。' }] } });
     expect(await (await get('/meta/movie/tt1234567.json')).json()).toEqual({ meta: null });
@@ -81,7 +81,7 @@ describe('Stremio and configuration HTTP', () => {
     for (const path of paths) {
       const catalog = await (await get(path)).json();
       const preview = catalog.metas[0];
-      expect(preview).toMatchObject({ id: 'cnative:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, type: 'series', name: '逐玉', logo: 'https://image.tmdb.org/t/p/w500/chinese-logo.png' });
+      expect(preview).toMatchObject({ id: 'cnative:zh-zh-zh:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, type: 'series', name: '逐玉', logo: 'https://image.tmdb.org/t/p/w500/chinese-logo.png' });
       expect(preview).not.toHaveProperty('imdbRating');
       const response = await get(`/meta/series/${encodeURIComponent(preview.id)}.json`);
       expect(response.status).toBe(200);
@@ -113,7 +113,7 @@ describe('Stremio and configuration HTTP', () => {
       const response = await get(path);
       expect(response.status).toBe(200);
       const { metas } = await response.json();
-      expect(metas[0]).toMatchObject({ id: 'cnative:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉' });
+      expect(metas[0]).toMatchObject({ id: 'cnative:zh-zh-zh:tt1234567', imdb_id: 'tt1234567', tmdb_id: 101, name: '逐玉' });
       expect(metas[0]).not.toHaveProperty('logo');
       expect(metas[1].logo).toBe('https://image.tmdb.org/t/p/w500/chinese-logo.png');
     }

@@ -1,8 +1,8 @@
-import type { AddonConfig } from '../config/config.schema.js';
+import type { DisplayLanguage, DisplayLanguages } from '../../../shared/config.js';
 import type { Genre, TmdbEpisode, TmdbImages, TmdbSeason, TmdbSeriesDetail, TmdbSeriesSummary } from '../providers/tmdb/tmdb.types.js';
-import { hasChineseText, isChineseLanguage } from '../utils/language.js';
 import { imageUrl } from '../utils/images.js';
-import { CNATIVE_ID_PREFIX, isImdbId } from '../ids/id-resolver.service.js';
+import { isImdbId } from '../ids/id-resolver.service.js';
+import { metadataId } from '../ids/metadata-id.js';
 
 export interface MetaPreview {
   id: string;
@@ -19,19 +19,18 @@ export interface MetaPreview {
   releaseInfo?: string;
 }
 
-export function resolveDisplayTitle(show: Pick<TmdbSeriesSummary, 'name' | 'original_name' | 'original_language'>, mode: AddonConfig['titleMode'] = 'native'): string {
-  if (mode === 'native' && isChineseLanguage(show.original_language) && show.original_name?.trim()) return show.original_name.trim();
+export function resolveDisplayTitle(show: Pick<TmdbSeriesSummary, 'name' | 'original_name'>): string {
   return show.name?.trim() || show.original_name?.trim() || '';
 }
 
-export function mapPreview(show: TmdbSeriesSummary, externalId: string, genres: Genre[], titleMode: AddonConfig['titleMode'], logo?: string): MetaPreview {
+export function mapPreview(show: TmdbSeriesSummary, externalId: string, genres: Genre[], languages: DisplayLanguages, logo?: string): MetaPreview {
   return {
     // Keep metadata ownership separate from external IDs used for ratings and matching.
-    id: `${CNATIVE_ID_PREFIX}${externalId}`, type: 'series', name: resolveDisplayTitle(show, titleMode),
+    id: metadataId(externalId, languages), type: 'series', name: resolveDisplayTitle(show),
     imdb_id: isImdbId(externalId) ? externalId : undefined, tmdb_id: show.id,
     poster: imageUrl(show.poster_path), background: imageUrl(show.backdrop_path, 'w1280'), posterShape: 'poster',
     logo,
-    description: show.overview ?? '',
+    description: show.overview?.trim() || '',
     genres: genres.filter(genre => show.genre_ids.includes(genre.id)).map(genre => genre.name),
     releaseInfo: show.first_air_date?.slice(0, 4) || undefined,
   };
@@ -39,10 +38,10 @@ export function mapPreview(show: TmdbSeriesSummary, externalId: string, genres: 
 
 export function episodeId(seriesId: string, season: number, episode: number): string { return `${seriesId}:${season}:${episode}`; }
 
-export function mapEpisode(episode: TmdbEpisode, seriesId: string, seasonPoster?: string | null) {
+export function mapEpisode(episode: TmdbEpisode, seriesId: string, language: DisplayLanguage, seasonPoster?: string | null) {
   return {
     id: episodeId(seriesId, episode.season_number, episode.episode_number),
-    title: hasChineseText(episode.name) ? episode.name!.trim() : `第 ${episode.episode_number} 集`,
+    title: episode.name?.trim() || (language === 'en-US' ? `Episode ${episode.episode_number}` : `第 ${episode.episode_number} 集`),
     season: episode.season_number, episode: episode.episode_number,
     released: episode.air_date ? `${episode.air_date}T00:00:00.000Z` : undefined,
     overview: episode.overview?.trim() || undefined,
@@ -52,24 +51,24 @@ export function mapEpisode(episode: TmdbEpisode, seriesId: string, seasonPoster?
   };
 }
 
-export function resolveTitleLogo(images?: TmdbImages): string | undefined {
+export function resolveTitleLogo(images: TmdbImages | undefined, language: DisplayLanguage): string | undefined {
   return (images?.logos ?? [])
-    .filter(image => image.iso_639_1 === 'zh')
+    .filter(image => image.iso_639_1 === language.slice(0, 2))
     .sort((a, b) => b.vote_average - a.vote_average || b.vote_count - a.vote_count)
     .map(image => imageUrl(image.file_path?.replace(/\.svg$/i, '.png')))
     .find(Boolean);
 }
 
-export function mapMetadata(show: TmdbSeriesDetail, externalId: string, seasons: TmdbSeason[], titleMode: AddonConfig['titleMode'], genres: Genre[]) {
+export function mapMetadata(show: TmdbSeriesDetail, externalId: string, seasons: TmdbSeason[], languages: DisplayLanguages, genres: Genre[]) {
   return {
     // Keep name for accessibility and the client's missing/failed-image fallback.
-    ...mapPreview(show, externalId, show.genres, titleMode, resolveTitleLogo(show.images)),
+    ...mapPreview(show, externalId, show.genres, languages, resolveTitleLogo(show.images, languages.titleLanguage)),
     genres: show.genres.map(genre => genres.find(label => label.id === genre.id)?.name ?? genre.name),
     cast: show.credits.cast.map(person => person.name),
     runtime: show.episode_run_time[0] ? `${show.episode_run_time[0]} min` : undefined,
     videos: seasons.filter(season => season.season_number > 0)
       .sort((a, b) => a.season_number - b.season_number)
       .flatMap(season => [...season.episodes].sort((a, b) => a.episode_number - b.episode_number)
-        .map(episode => mapEpisode(episode, externalId, season.poster_path))),
+        .map(episode => mapEpisode(episode, externalId, languages.episodeNameLanguage, season.poster_path))),
   };
 }

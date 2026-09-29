@@ -73,6 +73,35 @@ it('shows bilingual genre choices without a match-mode selector and saves genre 
   expect(persisted.catalogs[0]).not.toHaveProperty('genreJoinMode');
 });
 
+it.each(Array.from({ length: 8 }, (_, index) => index))('saves and restores display-language combination %i independently of original language', async combination => {
+  render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  const labels = ['Title', 'Synopsis', 'Episode'];
+  const name = `Language combination ${combination}`;
+  fireEvent.change(screen.getByLabelText('Catalog name'), { target: { value: name } });
+  const values = labels.map((_, index) => combination & (1 << index) ? 'en-US' : 'zh-CN');
+  labels.forEach((label, index) => {
+    expect((screen.getByLabelText(label) as HTMLSelectElement).value).toBe('zh-CN');
+    fireEvent.change(screen.getByLabelText(label), { target: { value: values[index] } });
+  });
+  expect((screen.getByLabelText('Original language') as HTMLSelectElement).value).toBe('zh');
+  fireEvent.click(screen.getByRole('button', { name: 'Apply catalog' }));
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await screen.findByText(/Configuration saved/);
+  const encoded = window.location.pathname.split('/')[1]!;
+  expect(decodeInstallation(encoded).config.catalogs[0]).toMatchObject({ titleLanguage: values[0], synopsisLanguage: values[1], episodeNameLanguage: values[2], originalLanguage: 'zh' });
+  cleanup(); render(<App />);
+  await screen.findByRole('heading', { name });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  labels.forEach((label, index) => expect((screen.getByLabelText(label) as HTMLSelectElement).value).toBe(values[index]));
+  expect(credentialSaves).toEqual([]);
+  for (const [url, init] of vi.mocked(fetch).mock.calls) {
+    expect(String(url)).not.toMatch(/test-key|test-token/);
+    expect(String(init?.body)).not.toMatch(/test-key|test-token/);
+  }
+});
+
 it('edits the requested catalog, preserves its ID and persists filters', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
@@ -123,7 +152,7 @@ it('changes General Settings and retains unsaved edits after a save failure', as
   render(<App />); await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
   fireEvent.change(screen.getByLabelText('Search scope'), { target: { value: 'all' } });
-  fireEvent.change(screen.getByLabelText('Chinese title mode'), { target: { value: 'localized' } });
+  expect(screen.queryByLabelText('Chinese title mode')).toBeNull();
   fireEvent.click(screen.getByRole('switch', { name: 'Off' }));
   failSave = true;
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
@@ -134,7 +163,7 @@ it('changes General Settings and retains unsaved edits after a save failure', as
   await waitFor(() => expect((screen.getByRole('button', { name: /Save configuration/ }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
   await screen.findByText(/Configuration saved/);
-  expect(persisted).toMatchObject({ searchScope: 'all', titleMode: 'localized', includeAdult: true });
+  expect(persisted).toMatchObject({ searchScope: 'all', includeAdult: true });
 });
 
 it('blocks installation and copying until an API key is saved, with no token required', async () => {

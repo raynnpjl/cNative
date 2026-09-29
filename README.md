@@ -1,6 +1,6 @@
 # cNative
 
-A configurable Stremio metadata addon for Chinese TV dramas. TMDB is the **only** provider. cNative uses existing Chinese/native metadata and never translates or scrapes it.
+A configurable Stremio metadata addon for Chinese TV dramas. TMDB is the **only** provider. cNative uses existing English and Simplified Chinese metadata and never machine-translates or scrapes it.
 
 Each installation carries its own encrypted TMDB credentials and catalog settings in its URL. No database, shared user configuration, or persistent disk is needed. The server requires one stable encryption secret. The default catalog uses Chinese original language, Drama (18), and popularity descending; all filters can be edited.
 
@@ -35,7 +35,7 @@ https://your-host/e1.<encrypted-configuration>/configure
 
 The URL contains AES-256-GCM encrypted JSON with the user's credentials and complete catalog configuration. The `e1` format encodes a random 12-byte nonce, a 16-byte authentication tag, and ciphertext using base64url. The format is authenticated as additional data. Decryption happens only on the backend; tampered links are rejected.
 
-Stremio retains the manifest URL and includes the configuration prefix on catalog and metadata requests. The matching configure URL restores settings and shows **API key saved**, with saved-token status when applicable. Credential inputs remain empty: leaving them blank preserves saved values, entering a value replaces it, and **Remove saved read access token** explicitly clears the optional token. Credentials are never returned by the configuration API. Saving generates a new encrypted URL; **install the updated link in Stremio to apply changes**. Previous encrypted links retain their previous settings.
+Stremio retains the manifest URL and includes the configuration prefix on catalog and metadata requests. The matching configure URL restores settings and shows **API key saved**, with saved-token status when applicable. Credential inputs remain empty: leaving them blank preserves saved values, entering a value replaces it, and **Remove saved read access token** explicitly clears the optional token. Credentials are never returned by the configuration API. Saving generates a new encrypted URL; **install the updated link in Stremio to apply changes**. Links using the current schema retain their previous settings.
 
 The public `/manifest.json` requires configuration. Requests without a personal configuration cannot access catalogs or metadata. Invalid links fail explicitly. Links are limited to 7,000 encoded characters to leave room for resource paths; oversized configurations are rejected before installation. Enabled manifests are also checked against Stremio's 8 KB limit.
 
@@ -63,12 +63,19 @@ Docker needs no data volume. Compose requires `CONFIG_ENCRYPTION_KEY` from `.env
 
 ## General settings
 
-- **Metadata language:** fixed to `zh-CN`.
-- **Chinese title mode:** native/original title by default; optionally use TMDB’s Chinese-localized name.
+- **Display languages:** configured separately in each catalog; the dedicated cNative search catalog stays Simplified Chinese.
 - **Adult content:** off by default; controls `include_adult` and detailed metadata visibility.
 - **Search scope:** Chinese content by default; optionally all TV series.
 
-Chinese-language series use `original_name` in native title mode. Other series use the `zh-CN` name, then `original_name`. Descriptions use the exact `overview` from the `zh-CN` request; missing descriptions remain empty. No English description fetch or translation fallback exists.
+Each catalog has three independent required preferences, all defaulting to Simplified Chinese:
+
+| Preference | Choices | Applies to |
+| --- | --- | --- |
+| Title | Simplified Chinese (`zh-CN`) / English (`en-US`) | Card and detail title, title logo |
+| Synopsis | Simplified Chinese (`zh-CN`) / English (`en-US`) | Card/detail synopsis and episode descriptions |
+| Episode | Simplified Chinese (`zh-CN`) / English (`en-US`) | Episode titles |
+
+For example, Chinese titles can accompany English synopses and English episode names. Titles use the requested TMDB name, then `original_name`. Missing synopses stay empty. Missing episode names use `Episode N` or `第 N 集` according to the episode-name preference; existing Latin-script names are preserved. Title logos must match the title language or are omitted. No machine translation or cross-language synopsis fallback is used. Original language remains a separate show-selection filter.
 
 Search recognizes Chinese language codes (including TMDB’s `zh` and `cn`) **or** Chinese origin (`CN`, `HK`, `TW`, `MO`). Mandarin Singapore productions qualify through language; Singapore origin alone does not imply Chinese content.
 
@@ -89,7 +96,7 @@ Add, edit, duplicate, delete (with undo), enable/disable, drag to reorder, or us
 | Runtime min / max | `with_runtime.gte` / `with_runtime.lte` |
 | Released only | Upper first-air-date capped at today (UTC); unknown dates excluded |
 
-Eight sorts: popularity, rating, first-air-date and vote count, each ascending/descending. Countries, languages, and TV genre labels are loaded from TMDB. Genres display Chinese and English together, such as `剧情 · Drama`, matched by TMDB genre ID. Selecting several genres includes shows matching at least one of them; there is no match-mode setting. Leave the genre selection empty to allow all genres. Original language controls **which shows** are selected; metadata language controls **how metadata is returned**. Chinese (`zh`) is the default original-language filter. The Hong Kong preset uses Cantonese (`cn`); choose Any language for broader regional coverage.
+Eight sorts: popularity, rating, first-air-date and vote count, each ascending/descending. Countries, languages, and TV genre labels are loaded from TMDB. Genres display Chinese and English together, such as `剧情 · Drama`, matched by TMDB genre ID. Selecting several genres includes shows matching at least one of them; there is no match-mode setting. Leave the genre selection empty to allow all genres. Original language controls **which shows** are selected; display languages control **how metadata is returned**. Chinese (`zh`) is the default original-language filter. The Hong Kong preset uses Cantonese (`cn`); choose Any language for broader regional coverage.
 
 TMDB TV genres differ from movie genres. For example, a standalone “Romance” genre may not exist in the TV genre list. cNative presents only TMDB’s actual TV choices.
 
@@ -102,17 +109,17 @@ TMDB can still return English genre labels for entries without a Chinese label, 
 - Catalogs with zero or one included genre can use an additional Stremio genre to narrow results upstream.
 - For a catalog with multiple included genres, the Stremio genre menu contains only those included genres. Selecting one narrows the union to that genre. cNative does not invent unsupported grouped boolean query syntax or filter Discover results after fetching.
 - Discover uses TMDB’s 20-item pages: `page = floor(skip / 20) + 1`. Non-aligned offsets slice only the remainder of that single upstream page. Requests beyond TMDB’s 500-page ceiling return an empty list.
-- Search is a separate, search-only catalog. It queries `/search/tv` without translating the query, then applies the configured Chinese-content scope. V1 returns the first upstream search page (up to 20 results before scope filtering); it does not advertise `skip` for search. This avoids mapping a filtered result count to the wrong TMDB page. Discover catalogs support full pagination independently.
+- Search is a separate, search-only catalog. It queries `/search/tv` without translating the query, then applies the configured Chinese-content scope. Search returns the first upstream search page (up to 20 results before scope filtering); it does not advertise `skip` for search. This avoids mapping a filtered result count to the wrong TMDB page. Discover catalogs support full pagination independently.
 - Stremio may cache installed manifests. After changing names, order, visibility or enabled catalogs, reinstall the addon using the newly generated manifest URL to refresh its layout.
-- Catalog, search and detailed metadata use `cnative:tt1234567` when IMDb is available, otherwise `cnative:tmdb:123`. The manifest advertises metadata for `cnative:` IDs so other providers do not replace Chinese details. Each response also supplies `tmdb_id` and, when available, `imdb_id` as separate identifiers for client rating lookups and matching. Episodes retain standard `tt1234567:1:1` or `tmdb:123:1:1` IDs. cNative only queries TMDB and does not supply an IMDb rating.
-- Only regular seasons are loaded. Empty/non-Chinese episode names fall back to `第 N 集`. Existing overview, runtime, air date and still are retained. Unknown air dates are omitted rather than invented; some Stremio clients may omit undated episodes. Season posters are included as an optional `seasonPoster` extension; client support varies.
+- Catalog, search and detailed metadata use `cnative:<title>-<synopsis>-<episode>:<external-id>`, where each language code is `zh` or `en`. For example, `cnative:zh-en-en:tt1234567` selects Chinese titles with English synopses and episode names; the TMDB-only form is `cnative:zh-en-en:tmdb:123`. Search uses `zh-zh-zh`. The manifest advertises metadata for `cnative:` IDs so other providers do not replace the selected details. All three preferences travel with the item, so opening a saved item requires no originating catalog. Different language combinations have different metadata IDs; identical combinations share one identity. Each response also supplies `tmdb_id` and, when available, `imdb_id` as separate identifiers for client rating lookups and matching. Episodes retain standard `tt1234567:1:1` or `tmdb:123:1:1` IDs. cNative only queries TMDB and does not supply an IMDb rating.
+- Only regular seasons are loaded. Empty episode names fall back to `Episode N` or `第 N 集` in the selected episode-name language. Existing overview, runtime, air date and still are retained. Unknown air dates are omitted rather than invented; some Stremio clients may omit undated episodes. Season posters are included as an optional `seasonPoster` extension; client support varies.
 - Missing posters/backgrounds/stills are omitted; no URLs contain `null` or `undefined`. Detail metadata does not label TMDB ratings as IMDb ratings.
-- Catalog/search previews and detailed metadata supply Stremio's `logo` field from existing TMDB Chinese title artwork. Details append images to the cached `zh-CN` series request; previews use the cached TV images endpoint. Both use `include_image_language=zh`. Optional artwork failures do not hide catalog results. The highest-rated usable Chinese logo is selected, with vote count breaking ties; SVG paths request TMDB's PNG rendering. The text `name` is always retained for accessibility and client fallback. When Chinese artwork is absent, untagged, or invalid, `logo` is omitted so the client can display the title as text. English artwork is not substituted.
+- Catalog/search previews and detailed metadata supply Stremio's `logo` field from existing TMDB artwork matching the title language (`include_image_language=zh` or `en`). Details append images to cached localized series requests; English previews reuse those responses, while Chinese previews use cached TV images. Optional image-endpoint failures do not hide results. The highest-rated usable matching logo is selected, with vote count breaking ties; SVG paths request TMDB's PNG rendering. The text `name` is always retained. Missing, untagged or invalid artwork is omitted; Chinese logos cannot replace English titles.
 - Use the **cNative** search row for native titles. Other addons may independently show English results for the same query; cNative cannot rename those results.
 
 ### Metadata and rating IDs
 
-cNative returns Chinese titles, descriptions, logos and episodes under its own IDs. Clients must explicitly support the separate `imdb_id` field to use their own rating lookup for these entries; unmodified clients that only recognize primary IMDb IDs may show no badge. Titles without an IMDb mapping also have no IMDb badge. The coordinated Harbor changes live in the separate Harbor source project; no client source or builds are bundled into cNative.
+cNative returns the selected titles, descriptions, logos and episodes under its own language-specific IDs. Clients must explicitly support the separate `imdb_id` field to use their own rating lookup for these entries; unmodified clients that only recognize primary IMDb IDs may show no badge. Titles without an IMDb mapping also have no IMDb badge. The coordinated Harbor changes live in the separate Harbor source project; no client source or builds are bundled into cNative.
 
 ### Client search behavior
 
@@ -136,8 +143,8 @@ GET  /<config>/manifest.json
 GET  /<config>/catalog/series/<catalog-id>.json
 GET  /<config>/catalog/series/<catalog-id>/genre=<encoded-name>&skip=20.json
 GET  /<config>/catalog/series/cnative_search/search=<encoded-query>.json
-GET  /<config>/meta/series/cnative:tt1234567.json
-GET  /<config>/meta/series/cnative:tmdb:123.json
+GET  /<config>/meta/series/cnative:zh-en-en:tt1234567.json
+GET  /<config>/meta/series/cnative:zh-en-en:tmdb:123.json
 ```
 
 The POST endpoints accept JSON and reject cross-origin browser requests. First save requires `credentialChanges.apiKey`; `credentialChanges.token` is optional. Updates require the current `encodedConfig`: omitted credential fields retain saved values, a nonempty string replaces a value, and `token: null` removes the optional token. An API key cannot be cleared. Save and lookup requests validate credentials with TMDB; restore decrypts locally and returns settings with `{ hasApiKey, hasReadAccessToken }` only. Raw saved credentials are never returned. No endpoint persists configuration. Stremio resource endpoints support CORS.
@@ -159,7 +166,7 @@ addon/src/
   config/            Backend-only installation encryption, schema and default exports
   catalogs/          Discover query builder and catalog/search services
   providers/tmdb/    Validated TMDB responses, native fetch, timeout, concurrency limit
-  metadata/          Chinese metadata mapping, season/episode mapping, coverage metrics
+  metadata/          Localized metadata joining, season/episode mapping, coverage metrics
   ids/               Bidirectional TMDB/IMDb mapping
   cache/             Bounded in-memory LRU/TTL cache and in-flight request deduplication
   utils/             Pagination, language detection, artwork URL construction
@@ -167,7 +174,7 @@ addon/scripts/       Live metadata coverage CLI
 tests/               Unit and HTTP integration tests with explicit TMDB fixtures
 ```
 
-TMDB metadata requests use `language=zh-CN`. Genre lists additionally use `en-US` to supply existing English labels alongside Chinese labels in the editor, Stremio filters, and metadata. Per TMDB client, at most six requests run concurrently with a 12-second timeout each. Upstream failures are surfaced, not cached as success or converted to missing IMDb mappings.
+Discovery and search use a fixed `zh-CN` locale to keep membership, filters, sorting and pagination independent of display choices. English card fields are joined from cached English series records by TMDB ID; no second discovery page is used. Detailed series fetch only title/synopsis locales, and seasons fetch only episode-name/synopsis locales. Episode descriptions are joined by season and episode number. Equal locales share one upstream request, and locale is part of every resource cache key. Genre lists continue using both locales for bilingual labels in the editor, filters and metadata. Per TMDB client, at most six requests run concurrently with a 12-second timeout each. Upstream failures are surfaced, not cached as success or converted to missing IMDb mappings.
 
 Cache lifetimes: catalog/search 5 minutes; series/seasons 6 hours; lookup lists 24 hours; ID mappings 30 days. Caches are isolated by credentials, bounded to 20 active runtimes, process-local, and cleared on restart. Settings themselves are passed separately to every request. Configuration changes affect request keys immediately. HTTP responses use `no-store` to avoid an intermediary retaining old configuration behavior.
 
@@ -181,16 +188,25 @@ npm test
 npm run build
 ```
 
-Tests cover configuration validation, encrypted URL round trips, tampering, wrong/missing keys, size limits, rejection of old links, masked reconfiguration, explicit credential updates, cold restarts, user isolation, every sort and filter, inclusive genre matching, bilingual labels, native genre selection, pagination, ID mapping, Chinese metadata/episode fallback policy, search, caching, HTTP endpoints and manifest controls. Tests use fixtures and an explicit test-only encryption key, not live TMDB or production secrets. The sample title in tests is fixture data and does not prove current TMDB coverage.
+Tests cover configuration validation, encrypted URL round trips, tampering, wrong/missing keys, size limits, rejection of old links, masked reconfiguration, explicit credential updates, cold restarts, user isolation, every sort and filter, inclusive genre matching, bilingual labels, native genre selection, pagination, ID mapping, all eight language combinations, per-catalog metadata identity, language-specific logos and missing-field fallbacks, search, caching, HTTP endpoints and manifest controls. Tests use fixtures and an explicit test-only encryption key, not live TMDB or production secrets. The sample title in tests is fixture data and does not prove current TMDB coverage.
 
 Manual installation check with a personal installation URL:
 
 1. Create `大陆热门剧集`, country China, language Chinese, popularity descending, minimum rating 6, minimum votes 20. Save.
 2. Fetch its catalog endpoint and confirm the response contains native names and Chinese descriptions where TMDB has them.
 3. Install the manifest in Stremio. Open the catalog, select a Chinese genre and scroll to another page.
-4. Open a series from cNative, verify its `cnative:` metadata ID, separate `imdb_id` where available, standard episode IDs and Chinese episode metadata. In the updated Harbor client, check the IMDb badge without an English metadata replacement.
+4. Open the same series from two catalogs with different display languages. Verify distinct metadata IDs, separate `imdb_id`/`tmdb_id`, identical standard episode playback IDs, matching logos and the selected episode fields. Repeat in Stremio and Harbor.
 5. Search by original and international title. Use the **cNative** row; other addons can show their own results. Results depend on TMDB’s stored names and alternatives.
-6. Reorder/disable/hide catalogs, save and reinstall. Verify Home versus Discover visibility.
+6. Save both versions to the library, restart the client and reopen each. Check that language choices persist. Play an episode, stop midway and verify resume and watched state after restart. Record whether progress is separate or shared across language variants; standard playback IDs alone do not guarantee client progress transfer.
+7. Reorder/disable/hide catalogs, save and reinstall. Verify Home versus Discover visibility. Reopen the encrypted configure link and verify all language choices, with credentials still hidden.
+
+### Per-catalog language release and deployment
+
+This is a clean schema replacement in version 2.0.0. Old global `metadataLanguage`/`titleMode` fields and catalogs missing any of the three language preferences are rejected, including inside previously encrypted links. There is no automatic migration. Users must open `/configure`, enter credentials, recreate their catalog choices and reinstall. Old `cnative:tt…` / `cnative:tmdb:…` library IDs no longer resolve; re-add titles from the new catalogs. Playback IDs retain the standard external format, but old library progress and progress across language variants depend on client behavior and are not promised to transfer.
+
+Use the existing Vercel project and unchanged `CONFIG_ENCRYPTION_KEY`; no database or new environment variable is required. Build and validate a preview deployment, create a fresh installation, then perform the Stremio and Harbor checks above before promoting to production. Announce the reconfigure/reinstall requirement. Keep the previous deployment available for rollback; new-schema links require this release, and old-schema links require the previous release.
+
+Verification on 2026-09-29: 184 tests, TypeScript checks and the production build passed. Live TMDB metadata for `tt35316225` (`逐玉` / `Pursuit of Jade`) passed all eight combinations with 40 episodes each, using seven upstream requests and no further request for a cached repeat. Harbor's current source functions retain cNative ownership and IMDb matching; its stream builder puts the standard episode ID first but also emits an extra language-prefixed candidate. Desktop access to both Stremio and Harbor was denied during verification, so actual playback, library reopen and watched/resume behavior remain release checks. No deployment was performed.
 
 ## Measure metadata coverage
 

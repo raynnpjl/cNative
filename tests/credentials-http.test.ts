@@ -60,6 +60,32 @@ it('validates a key and creates a personal URL that works after a cold restart',
   expect(await (await get('/manifest.json')).json()).toMatchObject({ behaviorHints: { configurationRequired: true } });
 });
 
+it('restores separate catalog languages after encryption and a cold restart without exposing credentials', async () => {
+  const config = createDefaultConfig();
+  config.catalogs = [
+    { ...config.catalogs[0]!, synopsisLanguage: 'en-US', episodeNameLanguage: 'en-US' },
+    { ...config.catalogs[0]!, id: 'catalog_english', titleLanguage: 'en-US' },
+  ];
+  const saved = await post('/api/configure', { config, credentialChanges: { apiKey: 'private-key', token: 'private-token' } });
+  expect(saved.status).toBe(200);
+  const { encodedConfig } = await saved.json();
+  await stop(); await start();
+  const restored = await post('/api/configuration', { encodedConfig });
+  const text = await restored.text();
+  expect(text).not.toMatch(/private-key|private-token/);
+  expect(JSON.parse(text)).toEqual({ config, credentialStatus: { hasApiKey: true, hasReadAccessToken: true } });
+  const ids: string[] = [];
+  for (const catalog of config.catalogs) {
+    const { metas } = await (await get(`/${encodedConfig}/catalog/series/${catalog.id}.json`)).json();
+    const { meta } = await (await get(`/${encodedConfig}/meta/series/${encodeURIComponent(metas[0].id)}.json`)).json();
+    ids.push(meta.id);
+    expect(meta.id).toBe(metas[0].id);
+    expect(meta.name).toBe(catalog.titleLanguage === 'en-US' ? 'Pursuit of Jade' : '逐玉');
+    expect(meta.videos[0].id).toBe('tt1234567:1:1');
+  }
+  expect(ids).toEqual(['cnative:zh-en-en:tt1234567', 'cnative:en-zh-zh:tt1234567']);
+});
+
 it.each([{}, { apiKey: '  ' }, { token: 'token-only' }])('requires the API key: %j', async credentials => {
   expect((await save(credentials)).status).toBe(400);
   expect(fixture.fetcher).not.toHaveBeenCalled();
