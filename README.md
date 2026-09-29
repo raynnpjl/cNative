@@ -2,11 +2,19 @@
 
 A configurable Stremio metadata addon for Chinese TV dramas. TMDB is the **only** provider. cNative uses existing Chinese/native metadata and never translates or scrapes it.
 
-Each installation carries its own TMDB credentials and catalog settings in its URL. No database, shared configuration, or persistent disk is needed. The default catalog uses Chinese original language, Drama (18), and popularity descending; all filters can be edited.
+Each installation carries its own encrypted TMDB credentials and catalog settings in its URL. No database, shared user configuration, or persistent disk is needed. The server requires one stable encryption secret. The default catalog uses Chinese original language, Drama (18), and popularity descending; all filters can be edited.
 
 ## Run locally
 
 Requires Node.js **22.12+** and a TMDB v3 API key from [TMDB API settings](https://www.themoviedb.org/settings/api). An API Read Access Token is optional.
+
+Create an ignored `.env` using `.env.example` as a template. Generate an encryption key once and save it as `CONFIG_ENCRYPTION_KEY` in `.env`:
+
+```sh
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
+```
+
+Keep this key private and stable across restarts. Missing or malformed keys stop the backend at startup. Use a separate key for production.
 
 ```sh
 npm ci
@@ -21,34 +29,29 @@ For development, run `npm run dev` and open **http://127.0.0.1:5173/configure**.
 ## Personal installation links
 
 ```text
-https://your-host/<encoded-configuration>/manifest.json
-https://your-host/<encoded-configuration>/configure
+https://your-host/e1.<encrypted-configuration>/manifest.json
+https://your-host/e1.<encrypted-configuration>/configure
 ```
 
-The URL contains versioned, UTF-8 base64url JSON with the user's credentials and complete catalog configuration. Stremio retains the manifest URL and includes the configuration prefix on catalog and metadata requests. The matching configure URL restores every setting, including both credential fields. Saving replaces the browser's configuration URL; **install the updated link in Stremio to apply changes**. Existing installations keep using their previous settings until updated.
+The URL contains AES-256-GCM encrypted JSON with the user's credentials and complete catalog configuration. The `e1` format encodes a random 12-byte nonce, a 16-byte authentication tag, and ciphertext using base64url. The format is authenticated as additional data. Decryption happens only on the backend; tampered links are rejected.
+
+Stremio retains the manifest URL and includes the configuration prefix on catalog and metadata requests. The matching configure URL restores settings and shows **API key saved**, with saved-token status when applicable. Credential inputs remain empty: leaving them blank preserves saved values, entering a value replaces it, and **Remove saved read access token** explicitly clears the optional token. Credentials are never returned by the configuration API. Saving generates a new encrypted URL; **install the updated link in Stremio to apply changes**. Previous encrypted links retain their previous settings.
 
 The public `/manifest.json` requires configuration. Requests without a personal configuration cannot access catalogs or metadata. Invalid links fail explicitly. Links are limited to 7,000 encoded characters to leave room for resource paths; oversized configurations are rejected before installation. Enabled manifests are also checked against Stremio's 8 KB limit.
 
-**Treat your personal link as a credential.** Encoding is not encryption. Anyone with the link can recover the key and use the same configuration. cNative receives the credentials on each request and may retain them in bounded process-local caches, but does not save them to disk or a database. Browser history and hosting request logs may contain the link. The configure page uses `no-referrer`, and application errors do not log request URLs or credentials. Share `/configure` publicly, not your personal link.
+**Treat your personal link as a credential.** Someone with only the link cannot decrypt the TMDB credentials without the server encryption key, but can still use the addon, restore its settings, and create updated links using those credentials. The server operator can access decrypted credentials. cNative may retain credentials in bounded process-local caches, but does not save them to disk or a database. Browser history and hosting request logs may contain encrypted links. The configure page uses `no-referrer`, HTTP responses use `no-store`, and application errors do not log request URLs or credentials. Share `/configure` publicly, not your personal link. Outbound TMDB authentication is unchanged: API-key-only requests use TMDB's `api_key` query parameter; a supplied Read Access Token uses its Authorization header, with the required API key still validated separately.
 
-Version 1.1 removes file-based settings entirely. Existing `data/config.json`, credential files, `CONFIG_PATH`, `TMDB_API_KEY`, and `TMDB_READ_ACCESS_TOKEN` are not read. Old local files are left untouched; create and install a new personal link through the UI.
+**Existing Base64 installation links are no longer accepted.** Open `/configure`, re-enter credentials and settings, and install the new link. There is no automatic conversion. Encryption does not remove credentials from old logs; rotate credentials that were exposed. Encrypted links have no automatic expiration and work after cold starts or redeployments using the same encryption key. Losing or replacing that key makes existing links unreadable. Keep a secure backup. Individual links cannot be revoked without adding server-side state; creating a replacement link alone does not revoke earlier ones.
 
-## Hosting on Vercel
-
-1. Push this version to your GitHub repository.
-2. In Vercel, choose **Add New → Project** and import the repository.
-3. Keep the repository root as the Root Directory and use the **Other** framework preset. The checked-in `vercel.json` supplies the build command, static output, and routing.
-4. Deploy. No TMDB environment variables, database, or disk are required.
-5. Open `https://your-project.vercel.app/configure`, save your API key and settings, and install the generated personal URL.
-
-The Vite frontend is served as static assets, while `api/index.ts` exposes the Express backend as a Vercel Function. Configure-page rewrites preserve the original URL so the browser can restore settings. The public production addon endpoints must be reachable without Vercel login protection for Stremio to use them. Vercel Hobby is for personal, non-commercial use and remains subject to its [usage limits](https://vercel.com/docs/plans/hobby).
+File-based settings, `CONFIG_PATH`, `TMDB_API_KEY`, and `TMDB_READ_ACCESS_TOKEN` are not read. User credentials come from each installation.
 
 ## Server settings and Docker
 
-Optional `.env` values for local Node.js:
+Server `.env` values for local Node.js and Docker Compose:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `CONFIG_ENCRYPTION_KEY` | Required | Base64url-encoded random 32-byte key; keep stable and private |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `7000` | HTTP port |
 
@@ -56,7 +59,7 @@ Optional `.env` values for local Node.js:
 docker compose up --build -d
 ```
 
-Docker needs no data volume. Compose binds port 7000 to localhost; use an HTTPS reverse proxy for remote Stremio clients. Credentials are supplied through each installation's configure page.
+Docker needs no data volume. Compose requires `CONFIG_ENCRYPTION_KEY` from `.env` or the shell and passes it at runtime; the image contains no encryption secret. Compose binds port 7000 to localhost; use an HTTPS reverse proxy for remote Stremio clients. Credentials are supplied through each installation's configure page.
 
 ## General settings
 
@@ -125,8 +128,9 @@ The [Stremio manifest protocol](https://github.com/Stremio/stremio-addon-sdk/blo
 GET  /configure
 GET  /<config>/configure
 GET  /api/status                service health only
-POST /api/configure             validate { version: 1, config, credentials }; return { encodedConfig }
-POST /api/lookups               { apiKey, token? }; genres, countries, languages
+POST /api/configure             { config, encodedConfig?, credentialChanges? }; return encrypted link, config, credentialStatus
+POST /api/configuration         { encodedConfig }; return config and credentialStatus only
+POST /api/lookups               { encodedConfig }; genres, countries, languages
 GET  /manifest.json             public, configuration required
 GET  /<config>/manifest.json
 GET  /<config>/catalog/series/<catalog-id>.json
@@ -136,7 +140,7 @@ GET  /<config>/meta/series/cnative:tt1234567.json
 GET  /<config>/meta/series/cnative:tmdb:123.json
 ```
 
-The POST endpoints accept JSON and validate credentials without persisting anything. They reject cross-origin browser requests. Stremio resource endpoints support CORS. No shared settings update endpoint remains.
+The POST endpoints accept JSON and reject cross-origin browser requests. First save requires `credentialChanges.apiKey`; `credentialChanges.token` is optional. Updates require the current `encodedConfig`: omitted credential fields retain saved values, a nonempty string replaces a value, and `token: null` removes the optional token. An API key cannot be cleared. Save and lookup requests validate credentials with TMDB; restore decrypts locally and returns settings with `{ hasApiKey, hasReadAccessToken }` only. Raw saved credentials are never returned. No endpoint persists configuration. Stremio resource endpoints support CORS.
 
 Stremio extras are URL-encoded path components, not ordinary URL query parameters. Search terms containing `&` must encode it as `%26`.
 
@@ -145,14 +149,14 @@ Stremio extras are URL-encoded path components, not ordinary URL query parameter
 ```text
 configure/src/       React + TypeScript + Vite configuration UI
 shared/config.ts     Canonical Zod schemas, types, defaults, sort choices
-shared/installation.ts  Versioned installation schema and URL codec
+shared/installation.ts  Configuration API schemas and opaque URL parsing
 api/index.ts         Vercel Function entry point
 addon/src/
   app.ts             Express config API, static UI, Stremio HTTP transport
   stremio.ts         Typed SDK runtime boundary
   manifest.ts        Dynamic enabled catalogs, order, extras and Home visibility
   handlers/          Thin Stremio resource handlers
-  config/            Shared schema and default exports
+  config/            Backend-only installation encryption, schema and default exports
   catalogs/          Discover query builder and catalog/search services
   providers/tmdb/    Validated TMDB responses, native fetch, timeout, concurrency limit
   metadata/          Chinese metadata mapping, season/episode mapping, coverage metrics
@@ -177,7 +181,7 @@ npm test
 npm run build
 ```
 
-Tests cover configuration validation, URL round trips, cold restarts, user isolation, reconfiguration, every sort and filter, inclusive genre matching, bilingual labels, native genre selection, pagination, ID mapping, Chinese metadata/episode fallback policy, search, caching, HTTP endpoints and manifest controls. Tests use fixtures, not live TMDB, and need no credentials. The sample title in tests is fixture data and does not prove current TMDB coverage.
+Tests cover configuration validation, encrypted URL round trips, tampering, wrong/missing keys, size limits, rejection of old links, masked reconfiguration, explicit credential updates, cold restarts, user isolation, every sort and filter, inclusive genre matching, bilingual labels, native genre selection, pagination, ID mapping, Chinese metadata/episode fallback policy, search, caching, HTTP endpoints and manifest controls. Tests use fixtures and an explicit test-only encryption key, not live TMDB or production secrets. The sample title in tests is fixture data and does not prove current TMDB coverage.
 
 Manual installation check with a personal installation URL:
 
@@ -190,7 +194,7 @@ Manual installation check with a personal installation URL:
 
 ## Measure metadata coverage
 
-Set `CNATIVE_MANIFEST_URL` in your ignored local `.env` to your personal manifest URL, then run against its first enabled catalog (20 series by default). Treat this value as a secret:
+Set `CNATIVE_MANIFEST_URL` in your ignored local `.env` to your personal encrypted manifest URL. `CONFIG_ENCRYPTION_KEY` must match the server that created that link; prefer a local link and local key. This operator CLI decrypts credentials internally to query TMDB. Run against the first enabled catalog (20 series by default). Treat both environment values as secrets:
 
 ```sh
 npm run metadata:coverage

@@ -5,7 +5,3 @@ export const tmdbCredentialsSchema = z.strictObject({
   token: z.string().trim().min(1).max(8192).optional(),
 });
 export type TmdbCredentials = z.infer<typeof tmdbCredentialsSchema>;
-
-export interface TmdbStatus {
-  tmdbConfigured: boolean;
-}

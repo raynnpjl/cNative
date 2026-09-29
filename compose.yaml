@@ -6,4 +6,5 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 7000
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:?Set CONFIG_ENCRYPTION_KEY in .env}
     restart: unless-stopped

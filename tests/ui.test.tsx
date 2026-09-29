@@ -3,8 +3,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from '../configure/src/App';
 import { createDefaultConfig, type AddonConfig, type Lookups } from '../shared/config';
-import type { TmdbCredentials } from '../shared/credentials';
-import { decodeInstallation, encodeInstallation, installationSchema } from '../shared/installation';
+import { saveInstallationSchema, type CredentialChanges } from '../shared/installation';
+import { decodeInstallation, encodeInstallation } from './installation-fixture';
+import { configurationView } from '../addon/src/config/installation';
 
 const lookups: Lookups = {
   genres: [{ id: 18, name: '剧情 · Drama' }, { id: 35, name: '喜剧 · Comedy' }],
@@ -13,7 +14,7 @@ const lookups: Lookups = {
 };
 let persisted: AddonConfig;
 let failSave: boolean;
-let credentialSaves: TmdbCredentials[];
+let credentialSaves: CredentialChanges[];
 let failCredentials: boolean;
 beforeEach(() => {
   persisted = createDefaultConfig(); failSave = false;
@@ -21,13 +22,20 @@ beforeEach(() => {
   window.history.replaceState(null, '', `/${encodeInstallation({ version: 1, config: persisted, credentials: { apiKey: 'test-key', token: 'test-token' } })}/configure`);
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input, init) => {
     if (String(input) === '/api/lookups') return Response.json(lookups);
+    if (String(input) === '/api/configuration') {
+      const { encodedConfig } = JSON.parse(String(init?.body));
+      return Response.json(configurationView(decodeInstallation(encodedConfig)));
+    }
     if (String(input) === '/api/configure') {
       if (failCredentials) return Response.json({ error: 'TMDB rejected the API key. Check it and try again.' }, { status: 400 });
       if (failSave) return Response.json({ error: 'TMDB temporarily unavailable' }, { status: 502 });
-      const installation = installationSchema.parse(JSON.parse(String(init?.body)));
-      credentialSaves.push(installation.credentials);
+      const request = saveInstallationSchema.parse(JSON.parse(String(init?.body)));
+      const previous = request.encodedConfig ? decodeInstallation(request.encodedConfig).credentials : undefined;
+      if (request.credentialChanges) credentialSaves.push(request.credentialChanges);
+      const token = request.credentialChanges?.token === undefined ? previous?.token : request.credentialChanges.token;
+      const installation = { version: 1 as const, config: request.config, credentials: { apiKey: request.credentialChanges?.apiKey ?? previous!.apiKey, ...(token ? { token } : {}) } };
       persisted = installation.config;
-      return Response.json({ encodedConfig: encodeInstallation(installation) });
+      return Response.json({ encodedConfig: encodeInstallation(installation), ...configurationView(installation) });
     }
     throw new Error(`Unexpected API endpoint: ${input}`);
   }));
@@ -145,7 +153,7 @@ it('blocks installation and copying until an API key is saved, with no token req
   await screen.findByText(/TMDB credentials saved to your personal link/);
   await waitFor(() => expect(install.getAttribute('href')).toContain('stremio://'));
   expect(credentialSaves).toEqual([{ apiKey: 'user-api-key' }]);
-  expect((apiKey as HTMLInputElement).value).toBe('user-api-key');
+  expect((apiKey as HTMLInputElement).value).toBe('');
   expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input) === '/api/lookups')).toBe(true);
   expect(persisted).not.toHaveProperty('apiKey');
 });
@@ -170,7 +178,7 @@ it('does not accept token-only setup and preserves input on a rejected save', as
   fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
   await screen.findByText(/TMDB credentials saved to your personal link/);
   expect(credentialSaves).toEqual([{ apiKey: 'valid-key', token: 'read-token' }]);
-  expect((token as HTMLInputElement).value).toBe('read-token');
+  expect((token as HTMLInputElement).value).toBe('');
 });
 
 it.each([
@@ -192,16 +200,16 @@ it.each([
   expect((screen.getByRole('button', { name: /Copy manifest URL/ }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-it('restores credentials and catalogs from the link and gates unsaved credential edits', async () => {
+it('restores settings with hidden saved credentials and gates unsaved credential edits', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
   const apiKey = screen.getByLabelText('TMDB API key (required)');
-  expect((apiKey as HTMLInputElement).value).toBe('test-key');
-  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('test-token');
+  expect((apiKey as HTMLInputElement).value).toBe('');
+  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
   await screen.findByText('API key saved');
   fireEvent.change(apiKey, { target: { value: 'replacement-key' } });
-  fireEvent.change(screen.getByLabelText('Read access token (optional)'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Remove saved read access token' }));
   expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Catalogs/ }));
   fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
@@ -211,15 +219,18 @@ it('restores credentials and catalogs from the link and gates unsaved credential
   expect(decodeInstallation(window.location.pathname.split('/')[1]!).credentials).toEqual({ apiKey: 'replacement-key' });
   cleanup();
   render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
-  expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('replacement-key');
+  expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('');
   expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
+  expect(screen.queryByRole('checkbox', { name: 'Remove saved read access token' })).toBeNull();
 });
 
 it('restores edited filters after reload and copies the same personal manifest URL', async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await screen.findByRole('option', { name: /China/ });
   fireEvent.change(screen.getByLabelText('Catalog name'), { target: { value: '我的剧集 & TV' } });
@@ -243,4 +254,49 @@ it('fails closed on a malformed configuration URL', () => {
   expect(screen.getByRole('alert').textContent).toContain('Invalid installation link');
   expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+it('keeps saved secrets out of reconfiguration requests and preserves them on settings changes', async () => {
+  render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('');
+  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
+  fireEvent.change(screen.getByLabelText('Search scope'), { target: { value: 'all' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await screen.findByText(/Configuration saved/);
+  expect(credentialSaves).toEqual([]);
+  expect(decodeInstallation(window.location.pathname.split('/')[1]!).credentials).toEqual({ apiKey: 'test-key', token: 'test-token' });
+  for (const [url, init] of vi.mocked(fetch).mock.calls) {
+    expect(String(url)).not.toMatch(/test-key|test-token|e1\./);
+    expect(String(init?.body)).not.toMatch(/test-key|test-token/);
+  }
+});
+
+it('can remove or replace a saved token without re-entering the required saved key', async () => {
+  render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Remove saved read access token' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
+  await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Remove saved read access token' })).toBeNull());
+  expect(credentialSaves).toEqual([{ token: null }]);
+  expect(decodeInstallation(window.location.pathname.split('/')[1]!).credentials).toEqual({ apiKey: 'test-key' });
+  fireEvent.change(screen.getByLabelText('Read access token (optional)'), { target: { value: 'new-token' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
+  await screen.findByRole('checkbox', { name: 'Remove saved read access token' });
+  expect(decodeInstallation(window.location.pathname.split('/')[1]!).credentials).toEqual({ apiKey: 'test-key', token: 'new-token' });
+  expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
+});
+
+it('keeps installation disabled while restoring settings and after a decryption failure', async () => {
+  let resolveRestore!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementationOnce(() => new Promise<Response>(resolve => { resolveRestore = resolve; }));
+  render(<App />);
+  expect(screen.getByText('Loading your library…')).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
+  resolveRestore(Response.json({ error: 'Invalid installation link. Open /configure to create a new one.' }, { status: 400 }));
+  await screen.findByRole('alert');
+  expect(screen.getByText('Configuration unavailable.')).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
 });
