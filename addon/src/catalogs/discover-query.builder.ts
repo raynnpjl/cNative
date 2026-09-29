@@ -1,12 +1,12 @@
 import type { CatalogConfig } from '../config/config.schema.js';
+import { ORIGIN_COUNTRY } from '../../../shared/config.js';
 import { InputError } from '../utils/errors.js';
 
 export type TmdbQuery = Record<string, string | number | boolean>;
 
 export function buildDiscoverQuery(catalog: CatalogConfig, page: number, additionalGenre?: number): TmdbQuery {
-  const query: TmdbQuery = { language: 'zh-CN', page, sort_by: catalog.sortBy };
+  const query: TmdbQuery = { language: 'zh-CN', page, sort_by: catalog.sortBy, with_origin_country: ORIGIN_COUNTRY };
   const filters = [
-    ['with_origin_country', catalog.originCountry], ['with_original_language', catalog.originalLanguage],
     ['vote_average.gte', catalog.voteAverageMin], ['vote_average.lte', catalog.voteAverageMax],
     ['vote_count.gte', catalog.voteCountMin], ['with_runtime.gte', catalog.runtimeMin],
     ['with_runtime.lte', catalog.runtimeMax], ['first_air_date.gte', catalog.firstAirDateFrom],

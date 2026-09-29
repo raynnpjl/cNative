@@ -64,7 +64,8 @@ describe('per-catalog display languages', () => {
     expect(metas.every(meta => meta?.imdb_id === 'tt1234567' && meta.videos[0]?.id === 'tt1234567:1:1')).toBe(true);
     const discovery = urls.filter(url => url.pathname === '/3/discover/tv');
     expect(discovery).toHaveLength(1);
-    expect(Object.fromEntries(discovery[0]!.searchParams)).toMatchObject({ page: '2', language: 'zh-CN', with_original_language: 'zh', with_genres: '18,9648', sort_by: 'popularity.desc' });
+    expect(Object.fromEntries(discovery[0]!.searchParams)).toMatchObject({ page: '2', language: 'zh-CN', with_origin_country: 'CN', with_genres: '18,9648', sort_by: 'popularity.desc' });
+    expect(discovery[0]!.searchParams.has('with_original_language')).toBe(false);
     for (const catalog of config.catalogs) expect(await catalogs.get(catalog.id, { skip: '10000' }, config)).toEqual([]);
     const search = await catalogs.get(SEARCH_CATALOG_ID, { search: 'Pursuit of Jade' }, config);
     expect(search[0]).toMatchObject({ id: 'cnative:zh-zh-zh:tt1234567', name: show.name, description: show.overview });

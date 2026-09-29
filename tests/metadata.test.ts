@@ -3,7 +3,6 @@ import { chineseDisplayLanguages, createDefaultConfig } from '../shared/config.j
 import { IdResolver } from '../addon/src/ids/id-resolver.service.js';
 import { MetadataService } from '../addon/src/metadata/metadata.service.js';
 import { mapEpisode, mapMetadata, resolveDisplayTitle } from '../addon/src/metadata/metadata.mapper.js';
-import { isChineseSeries } from '../addon/src/utils/language.js';
 import { imageUrl } from '../addon/src/utils/images.js';
 import { detail, episode, genres, season, show, tmdbFixture } from './fixtures.js';
 
@@ -14,10 +13,20 @@ describe('Chinese metadata', () => {
     expect(resolveDisplayTitle({ ...show, name: '' })).toBe('逐玉');
     expect(resolveDisplayTitle({ ...show, name: 'Pursuit of Jade' })).toBe('Pursuit of Jade');
   });
-  it('accepts language OR Chinese origin, without including every Singapore production', () => {
-    expect(isChineseSeries({ original_language: 'zh', origin_country: ['SG'] })).toBe(true);
-    expect(isChineseSeries({ original_language: 'en', origin_country: ['CN'] })).toBe(true);
-    expect(isChineseSeries({ original_language: 'en', origin_country: ['SG'] })).toBe(false);
+  it.each(['US', 'HK', 'TW', 'MO', 'SG', undefined])('rejects metadata outside China even with Chinese original language: %s', async country => {
+    const { client, fetcher, urls } = tmdbFixture();
+    const original = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (input, init) => new URL(String(input)).pathname === '/3/tv/101'
+      ? Response.json({ ...detail, origin_country: country ? [country] : [] }) : original(input, init));
+    expect(await new MetadataService(client, new IdResolver(client)).get('cnative:zh-zh-zh:tmdb:101', createDefaultConfig())).toBeNull();
+    expect(urls.some(url => url.pathname.includes('/season/'))).toBe(false);
+  });
+  it('accepts China co-productions regardless of original language', async () => {
+    const { client, fetcher } = tmdbFixture();
+    const original = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (input, init) => new URL(String(input)).pathname === '/3/tv/101'
+      ? Response.json({ ...detail, origin_country: ['US', 'CN'], original_language: 'en' }) : original(input, init));
+    expect(await new MetadataService(client, new IdResolver(client)).get('cnative:en-en-en:tmdb:101', createDefaultConfig())).toMatchObject({ tmdb_id: 101, videos: [{ id: 'tt1234567:1:1' }] });
   });
   it('uses Chinese episodes and conventional fallback titles/IDs, never fake dates or artwork', () => {
     expect(mapEpisode(episode, 'tt1234567', 'zh-CN')).toMatchObject({ id: 'tt1234567:1:1', title: '初见', overview: '相逢的故事。', runtime: '45 min' });

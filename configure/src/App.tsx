@@ -14,7 +14,7 @@ export default function App() {
   const [config, setConfig] = useState<AddonConfig | undefined>(initial.error || initial.encoded ? undefined : createDefaultConfig());
   const [saved, setSaved] = useState(JSON.stringify(config));
   const [tab, setTab] = useState<'catalogs' | 'general'>(initial.encoded ? 'catalogs' : 'general');
-  const [lookups, setLookups] = useState<Lookups>({ genres: [], countries: [], languages: [] });
+  const [lookups, setLookups] = useState<Lookups>({ genres: [] });
   const [error, setError] = useState(initial.error);
   const [lookupError, setLookupError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -74,7 +74,7 @@ export default function App() {
     finally { setCredentialSaving(false); }
   }
   async function save() {
-    if (!config || !encoded || !credentialStatus.hasApiKey) { setError('Save your TMDB API key in General Settings first.'); return; }
+    if (!config || !encoded || !credentialStatus.hasApiKey) { setError('Save your TMDB API key in Setup first.'); return; }
     setSaving(true); setError(''); setMessage('');
     try {
       await savePersonalLink();
@@ -89,10 +89,10 @@ export default function App() {
   const manifestUrl = `${addonOrigin.origin}/${encoded}/manifest.json`;
   const installUrl = `stremio://${addonOrigin.host}/${encoded}/manifest.json`;
 
-  return <div className="app-shell"><aside className="sidebar"><a className="brand" href={encoded ? `/${encoded}/configure` : '/configure'}><span className="brand-icon">原</span><span>cNative</span></a><div className="sidebar-label">YOUR LIBRARY</div><nav aria-label="Configuration sections"><button className={tab === 'general' ? 'active' : ''} onClick={() => setTab('general')}><span aria-hidden="true">☷</span>General Settings</button><button className={tab === 'catalogs' ? 'active' : ''} onClick={() => setTab('catalogs')}><span aria-hidden="true">▤</span>Catalogs<span className="nav-count">{config?.catalogs.length ?? '—'}</span></button></nav><div className="sidebar-bottom"><span className="status-dot" />TV series only<div>Made for the stories<br />closer to home.</div><small>cNative v2.0.0</small></div></aside>
-    <main><header className="topbar"><span></span><a className="button secondary install" role="link" tabIndex={0} aria-disabled={!canInstall} href={canInstall ? installUrl : undefined} onClick={event => { if (!canInstall) { event.preventDefault(); setMessage(credentialStatus.hasApiKey ? 'Save your changes before installing.' : 'Save your TMDB API key in General Settings before installing.'); } }}>Install in Stremio <span aria-hidden="true">↗</span></a></header>
+  return <div className="app-shell"><aside className="sidebar"><a className="brand" href={encoded ? `/${encoded}/configure` : '/configure'}><span className="brand-icon">原</span><span>cNative</span></a><div className="sidebar-label">YOUR LIBRARY</div><nav aria-label="Configuration sections"><button className={tab === 'general' ? 'active' : ''} onClick={() => setTab('general')}><span aria-hidden="true">☷</span>Setup</button><button className={tab === 'catalogs' ? 'active' : ''} onClick={() => setTab('catalogs')}><span aria-hidden="true">▤</span>Catalogs<span className="nav-count">{config?.catalogs.length ?? '—'}</span></button></nav><div className="sidebar-bottom"><span className="status-dot" />TV series only<small>cNative v1.2.0</small></div></aside>
+    <main><header className="topbar"><span></span><a className="button secondary install" role="link" tabIndex={0} aria-disabled={!canInstall} href={canInstall ? installUrl : undefined} onClick={event => { if (!canInstall) { event.preventDefault(); setMessage(credentialStatus.hasApiKey ? 'Save your changes before installing.' : 'Save your TMDB API key in Setup before installing.'); } }}>Install in Stremio <span aria-hidden="true">↗</span></a></header>
       <div className="main-content"><section className="hero"><div><span className="eyebrow"><span className="status-dot" /> Native Titles, Native Synopsis</span><h1>Exclusively Made<br /><span>For C-Drama.</span></h1></div><div className="hero-art" aria-hidden="true"><div className="orbit" /><span className="hanzi">剧</span></div></section>
-      {config && !credentialStatus.hasApiKey && <div className="notice warning" role="status"><div><strong>TMDB API key required</strong><p>Save your API key in General Settings to enable installation.</p></div>{tab !== 'general' && <button onClick={() => setTab('general')}>Set up TMDB</button>}</div>}
+      {config && !credentialStatus.hasApiKey && <div className="notice warning" role="status"><div><strong>TMDB API key required</strong><p>Save your API key in Setup to enable installation.</p></div>{tab !== 'general' && <button onClick={() => setTab('general')}>Set up TMDB</button>}</div>}
       {lookupError && <div className="notice warning" role="status"><div><strong>TMDB connection needs attention</strong><p>{lookupError}</p></div><button onClick={() => void loadLookups()}>Retry</button></div>}
       {error && <div className="notice error" role="alert">{error}{!config && <button onClick={() => window.location.reload()}>Reload</button>}</div>}
       {message && <div className="notice" role="status">{message}</div>}

@@ -1,4 +1,5 @@
 import type { AddonConfig } from '../config/config.schema.js';
+import { ORIGIN_COUNTRY } from '../../../shared/config.js';
 import type { IdResolver } from '../ids/id-resolver.service.js';
 import { parseMetadataId } from '../ids/metadata-id.js';
 import type { TmdbClient } from '../providers/tmdb/tmdb.client.js';
@@ -16,6 +17,7 @@ export class MetadataService {
     if (tmdbId === null) return null;
     try {
       const show = await this.tmdb.series(tmdbId, languages.titleLanguage);
+      if (!show.origin_country.includes(ORIGIN_COUNTRY)) return null;
       if (show.adult && !config.includeAdult) return null;
       const canonicalId = this.ids.remember(tmdbId, show.external_ids.imdb_id);
       const [synopsis, seasons, genres] = await Promise.all([

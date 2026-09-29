@@ -10,7 +10,7 @@ interface CNativeManifest extends Manifest {
 
 export function buildManifest(config: AddonConfig, genres: Genre[], configured: boolean): CNativeManifest {
   return {
-    id: 'org.cnative.tv', version: '2.0.0', name: 'cNative',
+    id: 'org.cnative.tv', version: '1.2.0', name: 'cNative',
     stremioAddonsConfig: {
       issuer: 'https://stremio-addons.net',
       signature: 'eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..f1tKdVu9r9pulRewImYz4w.KfyclNTDbdfiBdT-YOHq8-38Xm5fR9SxwaTPVz1Refc2tBVWYp3i-C58KPbZp9OaZjMJfr6WVnWkAt88yTaxggd_Hkg0OCyFYeFELlUNb20UzhSvJPDxYwWSf5h0iPZc.KTgsZgyYJswNzdaN1ejaHA',

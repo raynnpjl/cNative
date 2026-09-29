@@ -9,8 +9,6 @@ import { configurationView } from '../addon/src/config/installation';
 
 const lookups: Lookups = {
   genres: [{ id: 18, name: '剧情 · Drama' }, { id: 35, name: '喜剧 · Comedy' }],
-  countries: [{ iso_3166_1: 'CN', english_name: 'China', native_name: '中国' }],
-  languages: [{ iso_639_1: 'zh', english_name: 'Chinese', name: '中文' }],
 };
 let persisted: AddonConfig;
 let failSave: boolean;
@@ -73,7 +71,7 @@ it('shows bilingual genre choices without a match-mode selector and saves genre 
   expect(persisted.catalogs[0]).not.toHaveProperty('genreJoinMode');
 });
 
-it.each(Array.from({ length: 8 }, (_, index) => index))('saves and restores display-language combination %i independently of original language', async combination => {
+it.each(Array.from({ length: 8 }, (_, index) => index))('saves and restores display-language combination %i with fixed China origin', async combination => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
@@ -85,12 +83,18 @@ it.each(Array.from({ length: 8 }, (_, index) => index))('saves and restores disp
     expect((screen.getByLabelText(label) as HTMLSelectElement).value).toBe('zh-CN');
     fireEvent.change(screen.getByLabelText(label), { target: { value: values[index] } });
   });
-  expect((screen.getByLabelText('Original language') as HTMLSelectElement).value).toBe('zh');
+  expect(screen.queryByLabelText('Original language')).toBeNull();
+  expect(within(screen.getByRole('dialog')).getByText('China').tabIndex).toBe(-1);
+  expect(screen.queryByRole('textbox', { name: 'Origin country' })).toBeNull();
+  expect(screen.queryByRole('combobox', { name: 'Origin country' })).toBeNull();
+  for (const preset of ['Mainland China', 'Hong Kong', 'Taiwan']) expect(screen.queryByRole('button', { name: preset })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Apply catalog' }));
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
   await screen.findByText(/Configuration saved/);
   const encoded = window.location.pathname.split('/')[1]!;
-  expect(decodeInstallation(encoded).config.catalogs[0]).toMatchObject({ titleLanguage: values[0], synopsisLanguage: values[1], episodeNameLanguage: values[2], originalLanguage: 'zh' });
+  expect(decodeInstallation(encoded).config.catalogs[0]).toMatchObject({ titleLanguage: values[0], synopsisLanguage: values[1], episodeNameLanguage: values[2] });
+  expect(decodeInstallation(encoded).config.catalogs[0]).not.toHaveProperty('originCountry');
+  expect(decodeInstallation(encoded).config.catalogs[0]).not.toHaveProperty('originalLanguage');
   cleanup(); render(<App />);
   await screen.findByRole('heading', { name });
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
@@ -107,14 +111,13 @@ it('edits the requested catalog, preserves its ID and persists filters', async (
   await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
   fireEvent.change(screen.getByLabelText('Catalog name'), { target: { value: '大陆热门剧集' } });
-  fireEvent.change(screen.getByLabelText('Origin country'), { target: { value: 'CN' } });
   fireEvent.change(screen.getByLabelText('Minimum rating'), { target: { value: '6' } });
   fireEvent.change(screen.getByLabelText('Minimum votes'), { target: { value: '20' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply catalog' }));
   expect(screen.getByText('Unsaved changes')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
   await screen.findByText(/Configuration saved/);
-  expect(persisted.catalogs[0]).toMatchObject({ id: 'catalog_default', name: '大陆热门剧集', originCountry: 'CN', originalLanguage: 'zh', voteAverageMin: 6, voteCountMin: 20, includeGenres: [18] });
+  expect(persisted.catalogs[0]).toMatchObject({ id: 'catalog_default', name: '大陆热门剧集', voteAverageMin: 6, voteCountMin: 20, includeGenres: [18] });
 });
 
 it('duplicates, reorders, hides, disables, deletes and undoes without losing state', async () => {
@@ -148,10 +151,42 @@ it('adds a catalog from a preset and rejects contradictory rating ranges', async
   expect(persisted.catalogs[1]).toMatchObject({ sortBy: 'vote_average.desc', voteCountMin: 25 });
 });
 
-it('changes General Settings and retains unsaved edits after a save failure', async () => {
+it('switches sorting presets without retaining old rating limits or losing other catalog edits', async () => {
+  render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'en-US' } });
+  fireEvent.change(screen.getByLabelText('Minimum runtime · minutes'), { target: { value: '30' } });
+  fireEvent.change(screen.getByLabelText('Minimum rating'), { target: { value: '8' } });
+  fireEvent.change(screen.getByLabelText('Maximum rating'), { target: { value: '9' } });
+  fireEvent.change(screen.getByLabelText('Minimum votes'), { target: { value: '500' } });
+  fireEvent.click(screen.getByRole('switch', { name: 'Released only' }));
+  const presets = within(screen.getByRole('group', { name: 'Preset' }));
+  fireEvent.click(presets.getByRole('button', { name: 'Top Rated' }));
+  expect((screen.getByLabelText('Minimum rating') as HTMLInputElement).value).toBe('0');
+  expect((screen.getByLabelText('Maximum rating') as HTMLInputElement).value).toBe('10');
+  expect((screen.getByLabelText('Minimum votes') as HTMLInputElement).value).toBe('25');
+  fireEvent.click(presets.getByRole('button', { name: 'Popular' }));
+  expect((screen.getByLabelText('Minimum votes') as HTMLInputElement).value).toBe('0');
+  expect((screen.getByLabelText('Sort by') as HTMLSelectElement).value).toBe('popularity.desc');
+  fireEvent.click(presets.getByRole('button', { name: 'Latest' }));
+  expect((screen.getByLabelText('Sort by') as HTMLSelectElement).value).toBe('first_air_date.desc');
+  expect((screen.getByRole('switch', { name: 'Released only' }) as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(presets.getByRole('button', { name: 'Most Voted' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Apply catalog' }));
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await screen.findByText(/Configuration saved/);
+  expect(decodeInstallation(window.location.pathname.split('/')[1]!).config.catalogs[0]).toMatchObject({
+    sortBy: 'vote_count.desc', voteAverageMin: 0, voteAverageMax: 10, voteCountMin: 0,
+    titleLanguage: 'en-US', runtimeMin: 30, includeGenres: [18], releasedOnly: true,
+  });
+});
+
+it('changes Setup and retains unsaved edits after a save failure', async () => {
   render(<App />); await screen.findByRole('heading', { name: '华语热门剧集' });
-  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
-  fireEvent.change(screen.getByLabelText('Search scope'), { target: { value: 'all' } });
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
+  expect(screen.queryByLabelText('Search scope')).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Display languages' })).toBeNull();
   expect(screen.queryByLabelText('Chinese title mode')).toBeNull();
   fireEvent.click(screen.getByRole('switch', { name: 'Off' }));
   failSave = true;
@@ -163,7 +198,8 @@ it('changes General Settings and retains unsaved edits after a save failure', as
   await waitFor(() => expect((screen.getByRole('button', { name: /Save configuration/ }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
   await screen.findByText(/Configuration saved/);
-  expect(persisted).toMatchObject({ searchScope: 'all', includeAdult: true });
+  expect(persisted).toMatchObject({ includeAdult: true });
+  expect(persisted).not.toHaveProperty('searchScope');
 });
 
 it('blocks installation and copying until an API key is saved, with no token required', async () => {
@@ -232,7 +268,7 @@ it.each([
 it('restores settings with hidden saved credentials and gates unsaved credential edits', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
-  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
   const apiKey = screen.getByLabelText('TMDB API key (required)');
   expect((apiKey as HTMLInputElement).value).toBe('');
   expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
@@ -241,7 +277,7 @@ it('restores settings with hidden saved credentials and gates unsaved credential
   fireEvent.click(screen.getByRole('checkbox', { name: 'Remove saved read access token' }));
   expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Catalogs/ }));
-  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
   expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('replacement-key');
   fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
   await screen.findByText(/TMDB credentials saved to your personal link/);
@@ -249,7 +285,7 @@ it('restores settings with hidden saved credentials and gates unsaved credential
   cleanup();
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
-  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
   expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('');
   expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
   expect(screen.queryByRole('checkbox', { name: 'Remove saved read access token' })).toBeNull();
@@ -261,9 +297,8 @@ it('restores edited filters after reload and copies the same personal manifest U
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
   fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
-  await screen.findByRole('option', { name: /China/ });
   fireEvent.change(screen.getByLabelText('Catalog name'), { target: { value: '我的剧集 & TV' } });
-  fireEvent.change(screen.getByLabelText('Origin country'), { target: { value: 'CN' } });
+  fireEvent.change(screen.getByLabelText('Minimum rating'), { target: { value: '7' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply catalog' }));
   expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
@@ -274,7 +309,7 @@ it('restores edited filters after reload and copies the same personal manifest U
   await waitFor(() => expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toContain(path.replace('/configure', '/manifest.json')));
   fireEvent.click(screen.getByRole('button', { name: /Copy manifest URL/ }));
   expect(writeText.mock.calls[0]?.[0]).toContain(path.replace('/configure', '/manifest.json'));
-  expect(decodeInstallation(path.split('/')[1]!).config.catalogs[0]?.originCountry).toBe('CN');
+  expect(decodeInstallation(path.split('/')[1]!).config.catalogs[0]?.voteAverageMin).toBe(7);
 });
 
 it('fails closed on a malformed configuration URL', () => {
@@ -288,10 +323,10 @@ it('fails closed on a malformed configuration URL', () => {
 it('keeps saved secrets out of reconfiguration requests and preserves them on settings changes', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
-  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
   expect((screen.getByLabelText('TMDB API key (required)') as HTMLInputElement).value).toBe('');
   expect((screen.getByLabelText('Read access token (optional)') as HTMLInputElement).value).toBe('');
-  fireEvent.change(screen.getByLabelText('Search scope'), { target: { value: 'all' } });
+  fireEvent.click(screen.getByRole('switch', { name: 'Off' }));
   fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
   await screen.findByText(/Configuration saved/);
   expect(credentialSaves).toEqual([]);
@@ -305,7 +340,7 @@ it('keeps saved secrets out of reconfiguration requests and preserves them on se
 it('can remove or replace a saved token without re-entering the required saved key', async () => {
   render(<App />);
   await screen.findByRole('heading', { name: '华语热门剧集' });
-  fireEvent.click(screen.getByRole('button', { name: /General Settings/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Remove saved read access token' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save API key' }));
   await waitFor(() => expect(screen.queryByRole('checkbox', { name: 'Remove saved read access token' })).toBeNull());

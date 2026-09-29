@@ -1,10 +1,9 @@
 import type { AddonConfig } from '../config/config.schema.js';
-import { chineseDisplayLanguages, type DisplayLanguages } from '../../../shared/config.js';
+import { chineseDisplayLanguages, ORIGIN_COUNTRY, type DisplayLanguages } from '../../../shared/config.js';
 import type { IdResolver } from '../ids/id-resolver.service.js';
 import type { TmdbClient } from '../providers/tmdb/tmdb.client.js';
 import type { Genre, TmdbSeriesSummary } from '../providers/tmdb/tmdb.types.js';
 import { mapPreview, resolveTitleLogo } from '../metadata/metadata.mapper.js';
-import { isChineseSeries } from '../utils/language.js';
 import { parseSkip, skipToTmdbPage, TMDB_MAX_PAGE, TMDB_PAGE_SIZE } from '../utils/pagination.js';
 import { InputError, TmdbError } from '../utils/errors.js';
 import { buildDiscoverQuery, type TmdbQuery } from './discover-query.builder.js';
@@ -48,7 +47,8 @@ export class CatalogService {
       if (!query || skip !== 0) return [];
       if (query.length > 200) throw new InputError('Search query is too long');
       const results = await this.tmdb.search(query, 1, config.includeAdult);
-      const shows = results.results.filter(show => config.searchScope === 'all' || isChineseSeries(show));
+      // TMDB TV search has no origin-country query parameter.
+      const shows = results.results.filter(show => show.origin_country.includes(ORIGIN_COUNTRY));
       return Promise.all(shows.map(show => this.preview(show, genres, chineseDisplayLanguages)));
     }
     const catalog = config.catalogs.find(catalog => catalog.id === id && catalog.enabled);

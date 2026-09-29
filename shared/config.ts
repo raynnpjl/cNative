@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const ORIGIN_COUNTRY = 'CN';
+
 export const sortOptions = [
   ['popularity.desc', 'Popularity — High to Low'],
   ['popularity.asc', 'Popularity — Low to High'],
@@ -35,8 +37,6 @@ export const catalogConfigSchema = z.strictObject({
   enabled: z.boolean(),
   showInHome: z.boolean(),
   sortBy: tmdbTvSortSchema,
-  originCountry: z.string().regex(/^[A-Z]{2}$/).optional(),
-  originalLanguage: z.string().regex(/^[a-z]{2,3}$/).optional(),
   includeGenres: genreIds,
   excludeGenres: genreIds,
   firstAirDateFrom: z.iso.date().optional(),
@@ -67,7 +67,6 @@ export const catalogConfigSchema = z.strictObject({
 
 export const addonConfigSchema = z.strictObject({
   includeAdult: z.boolean(),
-  searchScope: z.enum(['chinese', 'all']),
   catalogs: z.array(catalogConfigSchema).max(50),
 }).superRefine((config, ctx) => {
   if (new Set(config.catalogs.map(catalog => catalog.id)).size !== config.catalogs.length) {
@@ -82,21 +81,19 @@ export function createCatalog(id: string, name = '新建剧集目录'): CatalogC
   return {
     ...chineseDisplayLanguages,
     id, name, enabled: true, showInHome: true, sortBy: 'popularity.desc',
-    originalLanguage: 'zh', includeGenres: [], excludeGenres: [],
+    includeGenres: [], excludeGenres: [],
     voteAverageMin: 0, voteAverageMax: 10, voteCountMin: 0, releasedOnly: true,
   };
 }
 
 export function createDefaultConfig(): AddonConfig {
   return {
-    includeAdult: false, searchScope: 'chinese',
+    includeAdult: false,
     catalogs: [{ ...createCatalog('catalog_default', '华语热门剧集'), includeGenres: [18] }],
   };
 }
 
 export const lookupSchema = z.object({
   genres: z.array(z.object({ id: z.number().int(), name: z.string() })),
-  countries: z.array(z.object({ iso_3166_1: z.string(), english_name: z.string(), native_name: z.string().optional() })),
-  languages: z.array(z.object({ iso_639_1: z.string(), english_name: z.string(), name: z.string() })),
 });
 export type Lookups = z.infer<typeof lookupSchema>;

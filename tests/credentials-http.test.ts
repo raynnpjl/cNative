@@ -125,8 +125,8 @@ it.each(['key', 'token'])('rejects an invalid %s through both Save and direct ma
 it('keeps concurrent users and configurations isolated, including caches', async () => {
   const first = { version: 1 as const, credentials: { apiKey: 'first' }, config: createDefaultConfig() };
   const second = { version: 1 as const, credentials: { apiKey: 'second', token: 'second-token' }, config: createDefaultConfig() };
-  first.config.catalogs[0]!.name = 'First'; first.config.catalogs[0]!.originCountry = 'CN';
-  second.config.catalogs[0]!.name = 'Second'; second.config.catalogs[0]!.originCountry = 'TW';
+  first.config.catalogs[0]!.name = 'First'; first.config.catalogs[0]!.sortBy = 'popularity.desc';
+  second.config.catalogs[0]!.name = 'Second'; second.config.catalogs[0]!.sortBy = 'vote_average.desc';
   const a = encodeInstallation(first); const b = encodeInstallation(second);
   const results = await Promise.all([get(`/${a}/manifest.json`), get(`/${b}/manifest.json`)]);
   expect((await results[0]!.json()).catalogs[0].name).toBe('First');
@@ -139,7 +139,8 @@ it('keeps concurrent users and configurations isolated, including caches', async
   expect(calls).toHaveLength(2);
   for (const [input, init] of calls) {
     const url = new URL(String(input));
-    if (url.searchParams.get('with_origin_country') === 'CN') {
+    expect(url.searchParams.get('with_origin_country')).toBe('CN');
+    if (url.searchParams.get('sort_by') === 'popularity.desc') {
       expect(url.searchParams.get('api_key')).toBe('first');
       expect(new Headers(init?.headers).has('Authorization')).toBe(false);
     } else expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer second-token');
@@ -147,7 +148,7 @@ it('keeps concurrent users and configurations isolated, including caches', async
   // Same credentials, different settings must also remain independent.
   const c = encodeInstallation({ ...second, credentials: first.credentials });
   expect((await get(`/${c}/catalog/series/catalog_default.json`)).status).toBe(200);
-  expect(fixture.urls.filter(url => url.pathname.endsWith('/discover/tv')).at(-1)?.searchParams.get('with_origin_country')).toBe('TW');
+  expect(fixture.urls.filter(url => url.pathname.endsWith('/discover/tv')).at(-1)?.searchParams.get('sort_by')).toBe('vote_average.desc');
   expect((await (await get(`/${a}/manifest.json`)).json()).catalogs[0].name).toBe('First');
 });
 

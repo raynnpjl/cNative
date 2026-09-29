@@ -33,10 +33,17 @@ export function tmdbFixture() {
     let data: unknown;
     if (path === '/authentication') data = { success: true };
     else if (path === '/genre/tv/list') data = { genres: url.searchParams.get('language') === 'en-US' ? englishGenres : chineseGenres };
-    else if (path === '/configuration/countries') data = [{ iso_3166_1: 'CN', english_name: 'China', native_name: '中国' }];
-    else if (path === '/configuration/languages') data = [{ iso_639_1: 'zh', english_name: 'Chinese', name: '中文' }];
     else if (path === '/discover/tv') data = { page: Number(url.searchParams.get('page')), total_pages: 3, total_results: 60, results: Array.from({ length: 20 }, (_, i) => ({ ...show, id: 101 + i })) };
-    else if (path === '/search/tv') data = { page: 1, total_pages: 1, total_results: 3, results: [show, { ...show, id: 102, original_language: 'en', origin_country: ['US'] }, { ...show, id: 103, original_language: 'cn', origin_country: ['HK'] }] };
+    else if (path === '/search/tv') data = { page: 1, total_pages: 1, total_results: 8, results: [
+      show,
+      { ...show, id: 102, origin_country: ['US'] },
+      { ...show, id: 103, original_language: 'cn', origin_country: ['HK'] },
+      { ...show, id: 104, original_language: 'en', origin_country: ['US', 'CN'] },
+      { ...show, id: 105, origin_country: ['TW'] },
+      { ...show, id: 106, origin_country: ['MO'] },
+      { ...show, id: 107, origin_country: ['SG'] },
+      { ...show, id: 108, origin_country: [] },
+    ] };
     else if (/^\/tv\/1\d\d$/.test(path)) data = {
       ...(url.searchParams.get('language') === 'en-US' ? englishDetail : detail), id: Number(path.split('/')[2]),
       external_ids: { imdb_id: path === '/tv/101' ? 'tt1234567' : null },

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { MemoryCache, TTL } from '../../cache/memory-cache.js';
 import type { TmdbQuery } from '../../catalogs/discover-query.builder.js';
-import { lookupSchema, type DisplayLanguage, type Lookups } from '../../../../shared/config.js';
+import type { DisplayLanguage, Lookups } from '../../../../shared/config.js';
 import { TmdbError } from '../../utils/errors.js';
 import { externalIdsSchema, findSchema, genreSchema, imagesSchema, seasonSchema, seriesDetailSchema, seriesPageSchema } from './tmdb.types.js';
 
@@ -82,11 +82,6 @@ export class TmdbClient {
     }));
   }
   async lookups(): Promise<Lookups> {
-    const [genres, countries, languages] = await Promise.all([
-      this.genres(),
-      this.request('/configuration/countries', lookupSchema.shape.countries, {}, TTL.lookup),
-      this.request('/configuration/languages', lookupSchema.shape.languages, {}, TTL.lookup),
-    ]);
-    return { genres, countries, languages };
+    return { genres: await this.genres() };
   }
 }
