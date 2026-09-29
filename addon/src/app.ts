@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { createDefaultConfig } from '../../shared/config.js';
 import { tmdbCredentialsSchema, type TmdbCredentials } from '../../shared/credentials.js';
-import { decodeInstallation, encodeInstallation, installationSchema, type Installation } from '../../shared/installation.js';
+import { installationRequestSchema, saveInstallationSchema } from '../../shared/installation.js';
+import { configurationView, createInstallationCodec, type Installation } from './config/installation.js';
 import { TmdbClient } from './providers/tmdb/tmdb.client.js';
 import { IdResolver } from './ids/id-resolver.service.js';
 import { CatalogService } from './catalogs/catalog.service.js';
@@ -18,7 +19,8 @@ import { InputError, TmdbError } from './utils/errors.js';
 
 const extraSchema = z.strictObject({ search: z.string().max(200).optional(), genre: z.string().max(100).optional(), skip: z.string().optional() });
 
-export function createApp(options: { fetcher?: typeof fetch; frontendPath?: string } = {}) {
+export function createApp(options: { fetcher?: typeof fetch; frontendPath?: string; encryptionKey?: string } = {}) {
+  const { encode, decode } = createInstallationCodec(options.encryptionKey ?? process.env.CONFIG_ENCRYPTION_KEY);
   const app = express();
   const frontend = options.frontendPath ?? resolve('dist/configure');
   app.enable('strict routing');
@@ -65,11 +67,6 @@ export function createApp(options: { fetcher?: typeof fetch; frontendPath?: stri
     builder.defineMetaHandler(metaHandler(active.metadata, installation.config));
     return builder.getInterface();
   }
-  function decode(encoded: string) {
-    try { return decodeInstallation(encoded); }
-    catch (error) { throw new InputError(error instanceof Error ? error.message : 'Invalid installation link'); }
-  }
-
   app.use('/api', (req, res, next) => {
     if (req.method !== 'POST') { next(); return; }
     const origin = req.get('origin');
@@ -83,15 +80,23 @@ export function createApp(options: { fetcher?: typeof fetch; frontendPath?: stri
   app.use('/api', express.json({ limit: '128kb' }));
   app.get('/api/status', (_req, res) => { res.json({ ok: true }); });
   app.post('/api/configure', async (req, res) => {
-    const installation = installationSchema.parse(req.body as unknown);
-    let encodedConfig: string;
-    try { encodedConfig = encodeInstallation(installation); }
-    catch (error) { throw new InputError(error instanceof Error ? error.message : 'Invalid configuration'); }
+    const request = saveInstallationSchema.parse(req.body as unknown);
+    const previous = request.encodedConfig ? decode(request.encodedConfig).credentials : undefined;
+    const changes = request.credentialChanges;
+    const token = changes?.token === undefined ? previous?.token : changes.token;
+    const credentials = tmdbCredentialsSchema.parse({ apiKey: changes?.apiKey ?? previous?.apiKey, ...(token ? { token } : {}) });
+    const installation: Installation = { version: 1, config: request.config, credentials };
+    const encodedConfig = encode(installation);
     await addon(installation);
-    res.json({ encodedConfig });
+    res.json({ encodedConfig, ...configurationView(installation) });
+  });
+  app.post('/api/configuration', (req, res) => {
+    const { encodedConfig } = installationRequestSchema.parse(req.body as unknown);
+    res.json(configurationView(decode(encodedConfig)));
   });
   app.post('/api/lookups', async (req, res) => {
-    const credentials = tmdbCredentialsSchema.parse(req.body as unknown);
+    const { encodedConfig } = installationRequestSchema.parse(req.body as unknown);
+    const { credentials } = decode(encodedConfig);
     res.json(await (await validatedRuntime(credentials)).tmdb.lookups());
   });
   app.get('/', (_req, res) => { res.redirect('/configure'); });

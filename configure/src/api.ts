@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { lookupSchema } from '../../shared/config';
-import type { TmdbCredentials } from '../../shared/credentials';
-import type { Installation } from '../../shared/installation';
+import { configurationResponseSchema, saveInstallationResponseSchema, type SaveInstallation } from '../../shared/installation';
 
 async function request<T>(path: string, schema: z.ZodType<T>, body: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -17,5 +16,6 @@ async function request<T>(path: string, schema: z.ZodType<T>, body: unknown): Pr
   return schema.parse(result);
 }
 
-export const getLookups = (credentials: TmdbCredentials) => request('/api/lookups', lookupSchema, credentials);
-export const saveInstallation = (installation: Installation) => request('/api/configure', z.object({ encodedConfig: z.string() }), installation);
+export const getLookups = (encodedConfig: string) => request('/api/lookups', lookupSchema, { encodedConfig });
+export const getConfiguration = (encodedConfig: string) => request('/api/configuration', configurationResponseSchema, { encodedConfig });
+export const saveInstallation = (installation: SaveInstallation) => request('/api/configure', saveInstallationResponseSchema, installation);

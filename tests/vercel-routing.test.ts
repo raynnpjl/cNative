@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { convertRewrites, type Rewrite } from '@vercel/routing-utils';
 import { expect, it } from 'vitest';
 import { createDefaultConfig } from '../shared/config.js';
-import { encodeInstallation } from '../shared/installation.js';
+import { encodeInstallation } from './installation-fixture.js';
 
 const config: { rewrites: Rewrite[] } = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 const routes = convertRewrites(config.rewrites);
@@ -10,6 +10,7 @@ const encoded = encodeInstallation({ version: 1, config: createDefaultConfig(), 
 
 it.each([
   ['/api/configure', '/api/index'],
+  ['/api/configuration', '/api/index'],
   ['/api/lookups', '/api/index'],
   ['/api/status', '/api/index'],
   ['/configure', '/index.html'],

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { z } from 'zod';
-import { decodeInstallation } from '../../shared/installation.js';
+import { createInstallationCodec } from '../src/config/installation.js';
 import { TmdbClient } from '../src/providers/tmdb/tmdb.client.js';
 import { buildDiscoverQuery } from '../src/catalogs/discover-query.builder.js';
 import { IdResolver } from '../src/ids/id-resolver.service.js';
@@ -19,7 +19,7 @@ try {
     encoded = match?.[1];
   } catch { /* Report only a safe message, never the credential-bearing URL. */ }
   if (!encoded) throw new Error('CNATIVE_MANIFEST_URL must be a personal cNative manifest URL.');
-  const { credentials, config } = decodeInstallation(encoded);
+  const { credentials, config } = createInstallationCodec(process.env.CONFIG_ENCRYPTION_KEY).decode(encoded);
   const tmdb = new TmdbClient(credentials);
   const resolver = new IdResolver(tmdb);
   let ids: number[] = [];

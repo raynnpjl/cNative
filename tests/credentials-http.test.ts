@@ -5,16 +5,16 @@ import type { Server } from 'node:http';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createApp } from '../addon/src/app.js';
 import { createDefaultConfig } from '../shared/config.js';
-import { decodeInstallation, encodeInstallation } from '../shared/installation.js';
+import { decodeInstallation, encodeInstallation, testEncryptionKey } from './installation-fixture.js';
 import { tmdbFixture } from './fixtures.js';
 
 let directory: string;
 let server: Server;
 let base: string;
 let fixture: ReturnType<typeof tmdbFixture>;
-async function start() {
+async function start(encryptionKey = testEncryptionKey) {
   await new Promise<void>((resolve, reject) => {
-    server = createApp({ fetcher: fixture.fetcher, frontendPath: directory }).listen(0, '127.0.0.1', error => error ? reject(error) : resolve());
+    server = createApp({ encryptionKey, fetcher: fixture.fetcher, frontendPath: directory }).listen(0, '127.0.0.1', error => error ? reject(error) : resolve());
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Missing test server address');
@@ -34,7 +34,7 @@ const get = (path: string) => fetch(`${base}${path}`);
 const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${base}${path}`, {
   method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body),
 });
-const installation = (credentials: unknown) => ({ version: 1, config: createDefaultConfig(), credentials });
+const installation = (credentials: unknown) => ({ config: createDefaultConfig(), credentialChanges: credentials });
 const save = (credentials: unknown, headers: Record<string, string> = {}) => post('/api/configure', installation(credentials), headers);
 
 it('starts unconfigured regardless of environment and removes shared configuration APIs', async () => {
@@ -150,4 +150,78 @@ it('rejects cross-origin and non-JSON validation requests', async () => {
   const response = await save({ apiKey: 'key' }, { Origin: base });
   expect(response.status).toBe(200);
   expect(response.headers.get('Access-Control-Allow-Origin')).toBeNull();
+});
+
+it('restores only settings and saved-status flags, including after restart', async () => {
+  const saved = await (await save({ apiKey: 'private-key', token: 'private-token' })).json();
+  expect(saved).toEqual({ encodedConfig: expect.stringMatching(/^e1\./), config: createDefaultConfig(), credentialStatus: { hasApiKey: true, hasReadAccessToken: true } });
+  expect(JSON.stringify(saved)).not.toMatch(/private-key|private-token/);
+  await stop(); await start();
+  const restored = await post('/api/configuration', { encodedConfig: saved.encodedConfig });
+  expect(restored.status).toBe(200);
+  expect(await restored.json()).toEqual({ config: saved.config, credentialStatus: saved.credentialStatus });
+  expect(restored.headers.get('Cache-Control')).toBe('no-store');
+  expect(restored.headers.get('Access-Control-Allow-Origin')).toBeNull();
+  const lookups = await post('/api/lookups', { encodedConfig: saved.encodedConfig });
+  expect(lookups.status).toBe(200);
+  expect(await lookups.text()).not.toMatch(/private-key|private-token/);
+  expect((await post('/api/lookups', { apiKey: 'private-key' })).status).toBe(400);
+});
+
+it('preserves credentials on settings edits and changes them only explicitly', async () => {
+  const saved = await (await save({ apiKey: 'original-key', token: 'original-token' })).json();
+  const config = createDefaultConfig(); config.catalogs[0]!.name = 'Updated';
+  const update = async (encodedConfig: string, credentialChanges?: unknown) => {
+    const response = await post('/api/configure', { encodedConfig, config, ...(credentialChanges ? { credentialChanges } : {}) });
+    expect(response.status).toBe(200);
+    return response.json();
+  };
+  const edited = await update(saved.encodedConfig);
+  expect(edited.encodedConfig).not.toBe(saved.encodedConfig);
+  expect(decodeInstallation(edited.encodedConfig)).toMatchObject({ config, credentials: { apiKey: 'original-key', token: 'original-token' } });
+  expect(decodeInstallation(saved.encodedConfig).config).toEqual(createDefaultConfig());
+  const newKey = await update(edited.encodedConfig, { apiKey: ' replacement-key ' });
+  expect(decodeInstallation(newKey.encodedConfig).credentials).toEqual({ apiKey: 'replacement-key', token: 'original-token' });
+  const newToken = await update(newKey.encodedConfig, { token: 'replacement-token' });
+  expect(decodeInstallation(newToken.encodedConfig).credentials).toEqual({ apiKey: 'replacement-key', token: 'replacement-token' });
+  const removed = await update(newToken.encodedConfig, { token: null });
+  expect(decodeInstallation(removed.encodedConfig).credentials).toEqual({ apiKey: 'replacement-key' });
+  expect(removed.credentialStatus).toEqual({ hasApiKey: true, hasReadAccessToken: false });
+  for (const credentialChanges of [{ apiKey: null }, { apiKey: '' }, { token: '' }, { unknown: true }]) {
+    expect((await post('/api/configure', { encodedConfig: removed.encodedConfig, config, credentialChanges })).status).toBe(400);
+  }
+});
+
+it('rejects old, tampered and wrong-key links at every personal endpoint without calling TMDB', async () => {
+  const installation = { version: 1 as const, config: createDefaultConfig(), credentials: { apiKey: 'private-key' } };
+  const valid = encodeInstallation(installation);
+  const bytes = Buffer.from(valid.slice(3), 'base64url'); bytes[28] = bytes[28]! ^ 1;
+  const links = [Buffer.from(JSON.stringify(installation)).toString('base64url'), `e1.${bytes.toString('base64url')}`, valid];
+  await stop(); await start(Buffer.alloc(32, 8).toString('base64url'));
+  for (const encodedConfig of links) {
+    for (const path of ['/api/configuration', '/api/lookups', '/api/configure']) {
+      const response = await post(path, { encodedConfig, ...(path === '/api/configure' ? { config: installation.config } : {}) });
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain('private-key');
+    }
+    for (const path of ['manifest.json', 'catalog/series/catalog_default.json', 'meta/series/tt1234567.json', 'configure']) {
+      const response = await get(`/${encodedConfig}/${path}`);
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain('private-key');
+    }
+  }
+  expect(fixture.fetcher).not.toHaveBeenCalled();
+});
+
+it('requires a valid server encryption secret at startup', () => {
+  expect(() => createApp({ encryptionKey: '' })).toThrow('CONFIG_ENCRYPTION_KEY');
+  expect(() => createApp({ encryptionKey: 'invalid-secret' })).toThrow('CONFIG_ENCRYPTION_KEY');
+});
+
+it.each(['/api/configuration', '/api/lookups', '/api/configure'])('protects %s with the same JSON and origin rules', async path => {
+  const encodedConfig = encodeInstallation({ version: 1, config: createDefaultConfig(), credentials: { apiKey: 'key' } });
+  const body = { encodedConfig, ...(path === '/api/configure' ? { config: createDefaultConfig() } : {}) };
+  expect((await post(path, body, { Origin: 'https://other.example' })).status).toBe(403);
+  expect((await post(path, body, { 'Content-Type': 'text/plain' })).status).toBe(415);
+  expect(fixture.fetcher).not.toHaveBeenCalled();
 });

@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../addon/src/app.js';
-import { encodeInstallation } from '../shared/installation.js';
+import { encodeInstallation, testEncryptionKey } from './installation-fixture.js';
 import { createDefaultConfig, type AddonConfig } from '../shared/config.js';
 import { buildManifest } from '../addon/src/manifest.js';
 import { TmdbClient } from '../addon/src/providers/tmdb/tmdb.client.js';
@@ -15,7 +15,7 @@ beforeEach(async () => {
   encoded = encodeInstallation({ version: 1, config: createDefaultConfig(), credentials: { apiKey: 'test-key', token: 'test-token' } });
   fixture = tmdbFixture();
   await new Promise<void>((resolve, reject) => {
-    server = createApp({ fetcher: fixture.fetcher }).listen(0, '127.0.0.1', error => error ? reject(error) : resolve());
+    server = createApp({ encryptionKey: testEncryptionKey, fetcher: fixture.fetcher }).listen(0, '127.0.0.1', error => error ? reject(error) : resolve());
   });
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('Missing test server address');
@@ -27,7 +27,7 @@ afterEach(async () => {
 });
 const get = (path: string) => fetch(`${base}/${encoded}${path}`);
 const save = async (config: unknown) => {
-  const response = await fetch(`${base}/api/configure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: 1, config, credentials: { apiKey: 'test-key', token: 'test-token' } }) });
+  const response = await fetch(`${base}/api/configure`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config, encodedConfig: encoded }) });
   if (response.ok) encoded = (await response.clone().json()).encodedConfig;
   return response;
 };
@@ -136,7 +136,7 @@ describe('Stremio and configuration HTTP', () => {
     config.catalogs[0]!.enabled = false;
     await save(config);
     expect((await (await get('/manifest.json')).json()).catalogs).toHaveLength(1);
-    expect(await (await fetch(`${base}/api/lookups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: 'test-key' }) })).json()).toMatchObject({ genres, countries: [{ iso_3166_1: 'CN' }], languages: [{ iso_639_1: 'zh' }] });
+    expect(await (await fetch(`${base}/api/lookups`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encodedConfig: encoded }) })).json()).toMatchObject({ genres, countries: [{ iso_3166_1: 'CN' }], languages: [{ iso_639_1: 'zh' }] });
   });
 });
 
