@@ -58,6 +58,32 @@ describe('personal installation links', () => {
   it.each([undefined, '', 'insecure-default', 'a'.repeat(42), 'a'.repeat(43), 'a'.repeat(44)])('fails closed on a missing or invalid encryption secret', secret => {
     expect(() => createInstallationCodec(secret)).toThrow('CONFIG_ENCRYPTION_KEY');
   });
+  it.each([undefined, ''])('identifies an absent deployment secret without claiming its format is wrong', secret => {
+    expect(() => createInstallationCodec(secret)).toThrow('CONFIG_ENCRYPTION_KEY is missing or empty in this deployment');
+  });
+  it.each([' ', '\n'])('identifies surrounding whitespace without revealing the secret', whitespace => {
+    for (const secret of [whitespace + testEncryptionKey, testEncryptionKey + whitespace]) {
+      let message = '';
+      try { createInstallationCodec(secret); } catch (error) { message = (error as Error).message; }
+      expect(message).toContain('CONFIG_ENCRYPTION_KEY contains surrounding whitespace');
+      expect(message).not.toContain(testEncryptionKey);
+    }
+  });
+  it.each(['"', "'"])('identifies pasted quotes without revealing the secret', quote => {
+    const secret = quote + testEncryptionKey + quote;
+    let message = '';
+    try { createInstallationCodec(secret); } catch (error) { message = (error as Error).message; }
+    expect(message).toContain('CONFIG_ENCRYPTION_KEY contains surrounding quotes');
+    expect(message).not.toContain(testEncryptionKey);
+  });
+  it('reports format requirements and received length without echoing invalid values', () => {
+    const secret = 'not-a-valid-key';
+    let message = '';
+    try { createInstallationCodec(secret); } catch (error) { message = (error as Error).message; }
+    expect(message).toContain('received 15 characters');
+    expect(message).toContain('43 base64url characters');
+    expect(message).not.toContain(secret);
+  });
   it('counts authentication overhead in the URL size limit', () => {
     const input = installation();
     input.credentials.token = '';

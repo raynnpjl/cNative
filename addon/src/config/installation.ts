@@ -10,9 +10,12 @@ export type Installation = z.infer<typeof installationSchema>;
 const aad = Buffer.from('cNative installation e1');
 
 export function createInstallationCodec(secret: string | undefined) {
-  if (!secret || !/^[A-Za-z0-9_-]{43}$/.test(secret)) throw new Error('CONFIG_ENCRYPTION_KEY must be a base64url-encoded random 32-byte key.');
+  if (!secret) throw new Error('CONFIG_ENCRYPTION_KEY is missing or empty in this deployment. Set the exact variable name for this deployment environment, then redeploy.');
+  if (secret !== secret.trim()) throw new Error('CONFIG_ENCRYPTION_KEY contains surrounding whitespace. Paste only the key value, then redeploy.');
+  if (/^["'`]|["'`]$/.test(secret)) throw new Error('CONFIG_ENCRYPTION_KEY contains surrounding quotes. Paste only the key value, then redeploy.');
+  if (!/^[A-Za-z0-9_-]{43}$/.test(secret)) throw new Error(`CONFIG_ENCRYPTION_KEY has invalid format (received ${secret.length} characters). Expected 43 base64url characters: letters, digits, hyphen or underscore, without padding.`);
   const key = Buffer.from(secret, 'base64url');
-  if (key.length !== 32 || key.toString('base64url') !== secret) throw new Error('CONFIG_ENCRYPTION_KEY must be a base64url-encoded random 32-byte key.');
+  if (key.length !== 32 || key.toString('base64url') !== secret) throw new Error('CONFIG_ENCRYPTION_KEY is not a canonical base64url-encoded 32-byte key. Use the documented key-generation command.');
 
   function encode(input: Installation): string {
     const plaintext = Buffer.from(JSON.stringify(installationSchema.parse(input)));
