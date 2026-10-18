@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createDefaultConfig, type AddonConfig, type Lookups } from '../../shared/config';
+import { addonConfigSchema, createDefaultConfig, type AddonConfig, type Lookups } from '../../shared/config';
 import { installationTokenFromPath, type CredentialChanges, type CredentialStatus } from '../../shared/installation';
 import { getConfiguration, getLookups, saveInstallation } from './api';
 import { TmdbCredentials, type CredentialDraft } from './components/TmdbCredentials';
@@ -58,7 +58,9 @@ export default function App() {
   }, [dirty, credentialsDirty]);
   async function savePersonalLink(credentialChanges?: CredentialChanges) {
     if (!config) return;
-    const result = await saveInstallation({ config, ...(encoded ? { encodedConfig: encoded } : {}), ...(credentialChanges ? { credentialChanges } : {}) });
+    const parsed = addonConfigSchema.safeParse(config);
+    if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Invalid configuration.');
+    const result = await saveInstallation({ config: parsed.data, ...(encoded ? { encodedConfig: encoded } : {}), ...(credentialChanges ? { credentialChanges } : {}) });
     window.history.replaceState(null, '', `/${result.encodedConfig}/configure`);
     setConfig(result.config); setSaved(JSON.stringify(result.config));
     setCredentialStatus(result.credentialStatus); setValidated(true); setEncoded(result.encodedConfig);

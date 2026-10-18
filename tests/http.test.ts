@@ -105,6 +105,44 @@ describe('Stremio and configuration HTTP', () => {
     expect(fixture.urls.find(url => url.pathname.endsWith('/search/tv'))?.searchParams.get('query')).toBe(query);
     expect(await (await get(`/catalog/series/catalog_default/search=${encodeURIComponent(query)}.json`)).json()).toEqual({ metas: [] });
   });
+  it('saves custom posters for catalogs, search and details while retaining Chinese metadata and IDs', async () => {
+    const config = { ...createDefaultConfig(), customPosterUrl: 'https://posters.example/{imdb_id}.jpg?key=poster-key' };
+    expect((await save(config)).status).toBe(200);
+    const restored = await (await fetch(`${base}/api/configuration`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ encodedConfig: encoded }),
+    })).json();
+    expect(restored.config.customPosterUrl).toBe(config.customPosterUrl);
+    for (const path of ['/catalog/series/catalog_default.json', `/catalog/series/cnative_search/search=${encodeURIComponent('逐玉')}.json`]) {
+      const { metas } = await (await get(path)).json();
+      expect(metas[0]).toMatchObject({
+        id: 'cnative:zh-zh-zh:tt1234567', name: '逐玉', description: '这是 TMDB 中文剧情简介。',
+        poster: 'https://posters.example/tt1234567.jpg?key=poster-key',
+        logo: 'https://image.tmdb.org/t/p/w500/chinese-logo.png',
+      });
+      expect(metas[1].poster).toBe('https://image.tmdb.org/t/p/w500/poster.jpg');
+      const { meta } = await (await get(`/meta/series/${encodeURIComponent(metas[0].id)}.json`)).json();
+      expect(meta).toMatchObject({
+        id: metas[0].id, name: metas[0].name, description: metas[0].description,
+        poster: metas[0].poster, logo: metas[0].logo,
+        videos: [{ id: 'tt1234567:1:1', title: '初见', overview: '相逢的故事。' }],
+      });
+    }
+    expect(fixture.urls.every(url => url.hostname === 'api.themoviedb.org')).toBe(true);
+
+    config.customPosterUrl = 'https://posters.example/{type}/{tmdb_id}.jpg';
+    expect((await save(config)).status).toBe(200);
+    expect((await (await get('/catalog/series/catalog_default.json')).json()).metas[0].poster).toBe('https://posters.example/series/101.jpg');
+    const { meta } = await (await get('/meta/series/cnative:zh-zh-zh:tmdb:102.json')).json();
+    expect(meta).toMatchObject({ id: 'cnative:zh-zh-zh:tmdb:102', name: '逐玉', poster: 'https://posters.example/series/102.jpg' });
+    config.customPosterUrl = '';
+    expect((await save(config)).status).toBe(200);
+    expect((await (await get('/meta/series/cnative:zh-zh-zh:tt1234567.json')).json()).meta.poster).toBe('https://image.tmdb.org/t/p/w500/poster.jpg');
+  });
+  it('rejects invalid poster templates without saving a new installation', async () => {
+    const previous = encoded;
+    expect((await save({ ...createDefaultConfig(), customPosterUrl: 'javascript:alert(1)' })).status).toBe(400);
+    expect(encoded).toBe(previous);
+  });
   it('caches preview artwork and keeps results usable when optional images fail', async () => {
     const fetcher = fixture.fetcher.getMockImplementation()!;
     fixture.fetcher.mockImplementation(async (input, init) => {

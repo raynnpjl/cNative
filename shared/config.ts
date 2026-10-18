@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { customPosterUrlSchema } from './poster-source.js';
 
 export const ORIGIN_COUNTRY = 'CN';
 
@@ -67,6 +68,7 @@ export const catalogConfigSchema = z.strictObject({
 
 export const addonConfigSchema = z.strictObject({
   includeAdult: z.boolean(),
+  customPosterUrl: customPosterUrlSchema.optional(),
   catalogs: z.array(catalogConfigSchema).max(50),
 }).superRefine((config, ctx) => {
   if (new Set(config.catalogs.map(catalog => catalog.id)).size !== config.catalogs.length) {
