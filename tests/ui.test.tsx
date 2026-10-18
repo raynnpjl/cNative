@@ -202,6 +202,43 @@ it('changes Setup and retains unsaved edits after a save failure', async () => {
   expect(persisted).not.toHaveProperty('searchScope');
 });
 
+it('saves, restores and clears a custom poster source without changing catalog languages', async () => {
+  render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
+  const template = 'https://posters.example/{imdb_id}.jpg?key=poster-key';
+  fireEvent.change(screen.getByLabelText('Custom poster URL (optional)'), { target: { value: template } });
+  expect(screen.getByText('Unsaved changes')).toBeTruthy();
+  expect(screen.getByRole('link', { name: /Install in Stremio/ }).getAttribute('href')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await screen.findByText(/Configuration saved/);
+  expect(decodeInstallation(window.location.pathname.split('/')[1]!).config).toMatchObject({
+    customPosterUrl: template, catalogs: [{ titleLanguage: 'zh-CN', synopsisLanguage: 'zh-CN', episodeNameLanguage: 'zh-CN' }],
+  });
+  cleanup(); render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
+  expect((screen.getByLabelText('Custom poster URL (optional)') as HTMLInputElement).value).toBe(template);
+  fireEvent.change(screen.getByLabelText('Custom poster URL (optional)'), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await screen.findByText(/Configuration saved/);
+  expect(persisted.customPosterUrl).toBeUndefined();
+});
+
+it('explains invalid poster templates and keeps edits available for correction', async () => {
+  render(<App />);
+  await screen.findByRole('heading', { name: '华语热门剧集' });
+  fireEvent.click(screen.getByRole('button', { name: /Setup/ }));
+  const field = screen.getByLabelText('Custom poster URL (optional)');
+  fireEvent.change(field, { target: { value: 'https://posters.example/{unsupported}.jpg' } });
+  expect(field.getAttribute('aria-invalid')).toBe('true');
+  expect(screen.getByRole('alert').textContent).toContain('placeholder');
+  fireEvent.click(screen.getByRole('button', { name: /Save configuration/ }));
+  await waitFor(() => expect(screen.getByText('Unsaved changes')).toBeTruthy());
+  expect(persisted.customPosterUrl).toBeUndefined();
+  expect((field as HTMLInputElement).value).toContain('{unsupported}');
+});
+
 it('blocks installation and copying until an API key is saved, with no token required', async () => {
   window.history.replaceState(null, '', '/configure');
   render(<App />);

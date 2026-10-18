@@ -15,7 +15,7 @@ export interface CatalogExtra { skip?: string; genre?: string; search?: string }
 export class CatalogService {
   constructor(private readonly tmdb: TmdbClient, private readonly ids: IdResolver) {}
 
-  private async preview(show: TmdbSeriesSummary, genres: Genre[], languages: DisplayLanguages) {
+  private async preview(show: TmdbSeriesSummary, genres: Genre[], languages: DisplayLanguages, customPosterUrl?: string) {
     const [id, english, images] = await Promise.all([
       this.ids.toExternalId(show.id),
       languages.titleLanguage === 'en-US' || languages.synopsisLanguage === 'en-US' ? this.tmdb.series(show.id, 'en-US') : undefined,
@@ -32,7 +32,7 @@ export class CatalogService {
       overview: languages.synopsisLanguage === 'en-US' ? translation?.overview : show.overview,
     };
     const logo = resolveTitleLogo(languages.titleLanguage === 'en-US' ? translation?.images : images, languages.titleLanguage);
-    return mapPreview(localized, id, genres, languages, logo);
+    return mapPreview(localized, id, genres, languages, logo, customPosterUrl);
   }
 
   async get(id: string, extra: CatalogExtra, config: AddonConfig) {
@@ -49,7 +49,7 @@ export class CatalogService {
       const results = await this.tmdb.search(query, 1, config.includeAdult);
       // TMDB TV search has no origin-country query parameter.
       const shows = results.results.filter(show => show.origin_country.includes(ORIGIN_COUNTRY));
-      return Promise.all(shows.map(show => this.preview(show, genres, chineseDisplayLanguages)));
+      return Promise.all(shows.map(show => this.preview(show, genres, chineseDisplayLanguages, config.customPosterUrl)));
     }
     const catalog = config.catalogs.find(catalog => catalog.id === id && catalog.enabled);
     if (!catalog || extra.search !== undefined || (!catalog.showInHome && !extra.genre)) return [];
@@ -64,6 +64,6 @@ export class CatalogService {
     if (page > results.total_pages) return [];
     // At most one upstream page is sliced, only for a non-aligned client offset.
     return Promise.all(results.results.slice(skip % TMDB_PAGE_SIZE)
-      .map(show => this.preview(show, genres, catalog)));
+      .map(show => this.preview(show, genres, catalog, config.customPosterUrl)));
   }
 }

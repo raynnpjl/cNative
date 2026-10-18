@@ -36,7 +36,7 @@ export class MetadataService {
         this.tmdb.genres(),
       ]);
       // Retain the requested metadata identity even if TMDB gains an IMDb mapping later.
-      return { ...mapMetadata({ ...show, overview: synopsis.id === show.id ? synopsis.overview : undefined }, canonicalId, seasons, languages, genres), id };
+      return { ...mapMetadata({ ...show, overview: synopsis.id === show.id ? synopsis.overview : undefined }, canonicalId, seasons, languages, genres, config.customPosterUrl), id };
     } catch (error) {
       if (error instanceof TmdbError && error.status === 404) return null;
       throw error;

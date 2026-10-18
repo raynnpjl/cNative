@@ -1,4 +1,5 @@
 import type { DisplayLanguage, DisplayLanguages } from '../../../shared/config.js';
+import { resolveCustomPosterUrl } from '../../../shared/poster-source.js';
 import type { Genre, TmdbEpisode, TmdbImages, TmdbSeason, TmdbSeriesDetail, TmdbSeriesSummary } from '../providers/tmdb/tmdb.types.js';
 import { imageUrl } from '../utils/images.js';
 import { isImdbId } from '../ids/id-resolver.service.js';
@@ -23,12 +24,14 @@ export function resolveDisplayTitle(show: Pick<TmdbSeriesSummary, 'name' | 'orig
   return show.name?.trim() || show.original_name?.trim() || '';
 }
 
-export function mapPreview(show: TmdbSeriesSummary, externalId: string, genres: Genre[], languages: DisplayLanguages, logo?: string): MetaPreview {
+export function mapPreview(show: TmdbSeriesSummary, externalId: string, genres: Genre[], languages: DisplayLanguages, logo?: string, customPosterUrl?: string): MetaPreview {
+  const imdbId = isImdbId(externalId) ? externalId : undefined;
   return {
     // Keep metadata ownership separate from external IDs used for ratings and matching.
     id: metadataId(externalId, languages), type: 'series', name: resolveDisplayTitle(show),
-    imdb_id: isImdbId(externalId) ? externalId : undefined, tmdb_id: show.id,
-    poster: imageUrl(show.poster_path), background: imageUrl(show.backdrop_path, 'w1280'), posterShape: 'poster',
+    imdb_id: imdbId, tmdb_id: show.id,
+    poster: resolveCustomPosterUrl(customPosterUrl, { imdbId, tmdbId: show.id }) ?? imageUrl(show.poster_path),
+    background: imageUrl(show.backdrop_path, 'w1280'), posterShape: 'poster',
     logo,
     description: show.overview?.trim() || '',
     genres: genres.filter(genre => show.genre_ids.includes(genre.id)).map(genre => genre.name),
@@ -59,10 +62,10 @@ export function resolveTitleLogo(images: TmdbImages | undefined, language: Displ
     .find(Boolean);
 }
 
-export function mapMetadata(show: TmdbSeriesDetail, externalId: string, seasons: TmdbSeason[], languages: DisplayLanguages, genres: Genre[]) {
+export function mapMetadata(show: TmdbSeriesDetail, externalId: string, seasons: TmdbSeason[], languages: DisplayLanguages, genres: Genre[], customPosterUrl?: string) {
   return {
     // Keep name for accessibility and the client's missing/failed-image fallback.
-    ...mapPreview(show, externalId, show.genres, languages, resolveTitleLogo(show.images, languages.titleLanguage)),
+    ...mapPreview(show, externalId, show.genres, languages, resolveTitleLogo(show.images, languages.titleLanguage), customPosterUrl),
     genres: show.genres.map(genre => genres.find(label => label.id === genre.id)?.name ?? genre.name),
     cast: show.credits.cast.map(person => person.name),
     runtime: show.episode_run_time[0] ? `${show.episode_run_time[0]} min` : undefined,
