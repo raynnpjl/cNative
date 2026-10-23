@@ -1,4 +1,4 @@
-import type { DisplayLanguage, DisplayLanguages } from '../../../shared/config.js';
+import { ORIGIN_COUNTRY, type DisplayLanguage, type DisplayLanguages } from '../../../shared/config.js';
 import { resolveCustomPosterUrl } from '../../../shared/poster-source.js';
 import type { Genre, TmdbEpisode, TmdbImages, TmdbSeason, TmdbSeriesDetail, TmdbSeriesSummary } from '../providers/tmdb/tmdb.types.js';
 import { imageUrl } from '../utils/images.js';
@@ -63,12 +63,21 @@ export function resolveTitleLogo(images: TmdbImages | undefined, language: Displ
 }
 
 export function mapMetadata(show: TmdbSeriesDetail, externalId: string, seasons: TmdbSeason[], languages: DisplayLanguages, genres: Genre[], customPosterUrl?: string) {
+  const cast = show.credits.cast.map(person => ({ name: person.name, photo: imageUrl(person.profile_path) }));
+  const runtime = show.episode_run_time.find(minutes => minutes > 0)
+    ?? seasons.filter(season => season.season_number > 0).flatMap(season => season.episodes)
+      .find(episode => (episode.runtime ?? 0) > 0)?.runtime;
   return {
     // Keep name for accessibility and the client's missing/failed-image fallback.
     ...mapPreview(show, externalId, show.genres, languages, resolveTitleLogo(show.images, languages.titleLanguage), customPosterUrl),
     genres: show.genres.map(genre => genres.find(label => label.id === genre.id)?.name ?? genre.name),
-    cast: show.credits.cast.map(person => person.name),
-    runtime: show.episode_run_time[0] ? `${show.episode_run_time[0]} min` : undefined,
+    cast: cast.map(person => person.name),
+    // Nuvio reads cast portraits from app_extras; standard Stremio cast entries stay names.
+    app_extras: { cast },
+    status: show.status?.trim() || undefined,
+    runtime: runtime ? `${runtime} min` : undefined,
+    ageRating: show.content_ratings?.results.find(rating => rating.iso_3166_1 === ORIGIN_COUNTRY && rating.rating?.trim())?.rating?.trim(),
+    country: show.origin_country.join(', ') || undefined,
     videos: seasons.filter(season => season.season_number > 0)
       .sort((a, b) => a.season_number - b.season_number)
       .flatMap(season => [...season.episodes].sort((a, b) => a.episode_number - b.episode_number)

@@ -46,6 +46,56 @@ describe('Chinese metadata', () => {
     expect(urls.some(url => url.pathname.endsWith('/season/0'))).toBe(false);
     expect(await service.get('cnative:zh-zh-zh:tmdb:999', createDefaultConfig())).toBeNull();
   });
+  it('supplies Nuvio detail fields when TMDB has them, including runtime from regular episodes', async () => {
+    const { client, fetcher, urls } = tmdbFixture();
+    const original = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (input, init) => {
+      const response = await original(input, init);
+      return new URL(String(input)).pathname === '/3/tv/101' ? Response.json({
+        ...await response.json(), status: 'Ended', episode_run_time: [], origin_country: ['CN', 'US'], content_ratings: {
+          results: [{ iso_3166_1: 'US', rating: 'TV-14' }, { iso_3166_1: 'CN', rating: '12+' }],
+        },
+      }) : response;
+    });
+    const meta = await new MetadataService(client, new IdResolver(client)).get('cnative:zh-zh-zh:tt1234567', createDefaultConfig());
+    expect(meta).toMatchObject({ name: '逐玉', releaseInfo: '2026', status: 'Ended', runtime: '45 min', ageRating: '12+', country: 'CN, US' });
+    expect(urls.find(url => url.pathname === '/3/tv/101')?.searchParams.get('append_to_response')?.split(',')).toContain('content_ratings');
+  });
+  it('keeps absent detail values empty instead of inventing certification, status or runtime', () => {
+    const meta = mapMetadata({
+      ...detail, status: ' ', episode_run_time: [], origin_country: [],
+      content_ratings: { results: [{ iso_3166_1: 'US', rating: 'TV-14' }, { iso_3166_1: 'CN', rating: ' ' }] },
+    }, 'tt1234567', [{ ...season, episodes: [{ ...episode, runtime: null }] }], chineseDisplayLanguages, genres);
+    const json = JSON.parse(JSON.stringify(meta));
+    for (const key of ['status', 'ageRating', 'runtime', 'country']) expect(json).not.toHaveProperty(key);
+    expect(json.name).toBe('逐玉');
+  });
+  it('uses a positive series runtime before episode durations and excludes specials from the runtime choice', () => {
+    const data = { ...detail, episode_run_time: [0, 42] };
+    const seasons = [{ ...season, season_number: 0, episodes: [{ ...episode, season_number: 0, runtime: 90 }] }, season];
+    expect(mapMetadata(data, 'tt1234567', seasons, chineseDisplayLanguages, genres).runtime).toBe('42 min');
+    expect(mapMetadata({ ...data, episode_run_time: [] }, 'tt1234567', seasons, chineseDisplayLanguages, genres).runtime).toBe('45 min');
+  });
+  it.each([
+    ['cnative:zh-en-en:tt1234567', '演员甲'],
+    ['cnative:en-zh-zh:tt1234567', 'Actor A'],
+  ])('keeps actor photos alongside the selected cast-name language: %s', async (id, name) => {
+    const { client, fetcher } = tmdbFixture();
+    const original = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (input, init) => new URL(String(input)).pathname === '/3/tv/101'
+      ? Response.json({ ...detail, credits: { cast: [{
+        name: new URL(String(input)).searchParams.get('language') === 'en-US' ? 'Actor A' : '演员甲', profile_path: '/actor.jpg',
+      }] } })
+      : original(input, init));
+    const meta = await new MetadataService(client, new IdResolver(client)).get(id, createDefaultConfig());
+    expect(meta?.cast).toEqual([name]);
+    expect(meta?.app_extras.cast).toEqual([{ name, photo: 'https://image.tmdb.org/t/p/w500/actor.jpg' }]);
+  });
+  it.each([undefined, null, '', 'null', 'undefined', 'https://other.example/actor.jpg'])('omits missing or invalid actor photos without removing cast names: %s', profile_path => {
+    const meta = mapMetadata({ ...detail, credits: { cast: [{ name: '演员甲', profile_path }] } }, 'tt1234567', [season], chineseDisplayLanguages, genres);
+    expect(meta.cast).toEqual(['演员甲']);
+    expect(JSON.parse(JSON.stringify(meta)).app_extras.cast).toEqual([{ name: '演员甲' }]);
+  });
   it('keeps native metadata IDs without inventing an IMDb mapping', () => {
     const meta = mapMetadata({ ...detail, external_ids: { imdb_id: null } }, 'tmdb:101', [season], chineseDisplayLanguages, genres);
     expect(meta.id).toBe('cnative:zh-zh-zh:tmdb:101');
