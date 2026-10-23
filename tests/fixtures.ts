@@ -18,7 +18,8 @@ export const logos = [
 ];
 export const detail = {
   ...show, genres: chineseGenres, episode_run_time: [45], seasons: [{ season_number: 0 }, { season_number: 1 }],
-  credits: { cast: [{ name: '演员甲' }] }, external_ids: { imdb_id: 'tt1234567' },
+  status: 'Ended', content_ratings: { results: [{ iso_3166_1: 'CN', rating: '12+' }] },
+  credits: { cast: [{ name: '演员甲', profile_path: '/actor.jpg' }] }, external_ids: { imdb_id: 'tt1234567' },
   images: { logos },
 };
 export const englishDetail = { ...detail, name: 'Pursuit of Jade', overview: 'An English synopsis.' };

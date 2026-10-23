@@ -63,7 +63,7 @@ export class TmdbClient {
     return this.request('/search/tv', seriesPageSchema, { query, page, include_adult: includeAdult }, TTL.catalog);
   }
   series(id: number, language: DisplayLanguage = 'zh-CN') {
-    return this.request(`/tv/${id}`, seriesDetailSchema, { append_to_response: 'external_ids,credits,images', include_image_language: language.slice(0, 2) }, TTL.metadata, language);
+    return this.request(`/tv/${id}`, seriesDetailSchema, { append_to_response: 'external_ids,credits,images,content_ratings', include_image_language: language.slice(0, 2) }, TTL.metadata, language);
   }
   season(id: number, season: number, language: DisplayLanguage = 'zh-CN') { return this.request(`/tv/${id}/season/${season}`, seasonSchema, {}, TTL.metadata, language); }
   images(id: number, language: DisplayLanguage = 'zh-CN') { return this.request(`/tv/${id}/images`, imagesSchema, { include_image_language: language.slice(0, 2) }, TTL.metadata, language); }

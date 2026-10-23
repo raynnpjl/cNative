@@ -46,7 +46,7 @@ describe('Stremio and configuration HTTP', () => {
     expect(query!.has('with_original_language')).toBe(false);
     const manifest = await (await get('/manifest.json')).json();
     expect(manifest.name).toBe('cNative');
-    expect(manifest.version).toBe('1.2.0');
+    expect(manifest.version).toBe('1.0.0');
     expect(manifest.behaviorHints.configurationRequired).toBe(false);
     expect(manifest.catalogs[0].name).toBe('大陆热门剧集');
     expect(manifest.catalogs[0].id).toBe('catalog_default');
@@ -72,7 +72,11 @@ describe('Stremio and configuration HTTP', () => {
   it('returns an IMDb-compatible detailed episode response', async () => {
     const response = await get('/meta/series/cnative:zh-zh-zh:tt1234567.json');
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ meta: { name: '逐玉', videos: [{ id: 'tt1234567:1:1', title: '初见', overview: '相逢的故事。' }] } });
+    expect(await response.json()).toMatchObject({ meta: {
+      name: '逐玉', cast: ['演员甲'], app_extras: { cast: [{ name: '演员甲', photo: 'https://image.tmdb.org/t/p/w500/actor.jpg' }] },
+      status: 'Ended', runtime: '45 min', ageRating: '12+', country: 'CN', releaseInfo: '2026',
+      videos: [{ id: 'tt1234567:1:1', title: '初见', overview: '相逢的故事。' }],
+    } });
     expect(await (await get('/meta/movie/tt1234567.json')).json()).toEqual({ meta: null });
   });
   it('separates native metadata IDs from IMDb rating IDs in catalogs, search and details', async () => {

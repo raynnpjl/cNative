@@ -20,8 +20,10 @@ const logoSchema = z.object({
 export const imagesSchema = z.object({ logos: z.array(logoSchema).default([]) });
 export const seriesDetailSchema = seriesSummarySchema.extend({
   genres: z.array(genreSchema), episode_run_time: z.array(z.number()).default([]),
+  status: text,
+  content_ratings: z.object({ results: z.array(z.object({ iso_3166_1: z.string(), rating: text })).default([]) }).nullish(),
   seasons: z.array(z.object({ season_number: z.number().int(), poster_path: text })),
-  credits: z.object({ cast: z.array(z.object({ name: z.string() })) }),
+  credits: z.object({ cast: z.array(z.object({ name: z.string(), profile_path: text })) }),
   external_ids: externalIdsSchema,
   images: imagesSchema.optional(),
 });
