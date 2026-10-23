@@ -46,7 +46,7 @@ describe('Stremio and configuration HTTP', () => {
     expect(query!.has('with_original_language')).toBe(false);
     const manifest = await (await get('/manifest.json')).json();
     expect(manifest.name).toBe('cNative');
-    expect(manifest.version).toBe('1.2.0');
+    expect(manifest.version).toBe('1.0.0');
     expect(manifest.behaviorHints.configurationRequired).toBe(false);
     expect(manifest.catalogs[0].name).toBe('大陆热门剧集');
     expect(manifest.catalogs[0].id).toBe('catalog_default');
